@@ -20,7 +20,7 @@ export default {
    ** Headers of the page
    */
   head: {
-    title: 'TransPlant',
+    title: 'Scinteg',
     htmlAttrs: {
       lang: 'en',
     },

@@ -16,17 +16,6 @@
       For issues please
       <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
     </p> -->
-
-    <hr />
-    <div class="container">
-      <!-- contains form, so rename to SimpleUploadForm -->
-      <div class="multiple-uploads-wrapper">
-        <multiple-uploads />
-      </div>
-    </div>
-
-    <hr />
-
     <form id="myForm" class="form-wrapper" @submit.prevent="submit">
       <b-field label="Description of incident(s)">
         <div class="description-wrapper">
@@ -43,7 +32,21 @@
           ></b-input>
         </div>
       </b-field>
+      <div>
+        <b-field label="Upload supporting file(s)">
+          <div class="description-wrapper">
+            <p>
+              Please be mindful that large uploads will take a while for the
+              server to process on submission. Max total upload size is 1GB.
+            </p>
+            <div class="dashboard-wrapper">
+              <div id="Dashboard"></div>
+            </div>
+          </div>
+        </b-field>
 
+        <br />
+      </div>
       <hr />
       <b-button
         class="submit-button"
@@ -57,28 +60,120 @@
 </template>
 
 <script>
-import SimpleUpload from '~/components/SimpleUpload.vue';
-import MultipleUploads from '~/components/MultipleUploads.vue';
+import Uppy from '@uppy/core';
+import Tus from '@uppy/tus';
+import Dashboard from '@uppy/dashboard';
+import Form from '@uppy/form';
+
+import '@uppy/core/dist/style.css';
+import '@uppy/dashboard/dist/style.css';
 
 export default {
-  name: 'Index',
-  auth: false,
   components: {
-    MultipleUploads,
-    SimpleUpload,
+    Dashboard,
   },
   data() {
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     return {
       description: '',
+      uppyInstance: null,
       uploadedFiles: [],
       //randomlyGeneratedID: uuidv4().slice(0, 8),
       API_URL: apiUrl,
+      uppy: null,
       files: [],
     };
   },
-  mounted() {},
-  beforeUnmount() {},
+  mounted() {
+    this.uppy = new Uppy({
+      debug: true,
+      autoProceed: true,
+      allowMultipleUploadBatches: true,
+      restrictions: {
+        requiredMetaFields: [],
+        maxFileSize: 10000 * 100000, // 10GB
+        maxNumberOfFiles: 1000,
+        minNumberOfFiles: 0,
+      },
+      meta: {},
+      locale: {},
+      infoTimeout: 5000,
+      id: 'uppy',
+    })
+      .use(Tus, {
+        endpoint: this.API_URL + '/api/uploads',
+        // formData: true,
+        // fieldName: 'files',
+        //resume: true,
+        //bundle: true,
+        limit: 10,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'X-HTTP-Method-Override': 'POST',
+          'Access-Control-Allow-Methods':
+            'GET, POST, OPTIONS, PUT, PATCH, DELETE',
+          'Access-Control-Allow-Headers':
+            'Authorization, Origin, Content-Type, Accept',
+          'Access-Control-Allow-Credentials': 'true',
+        },
+      })
+      .use(Form, {
+        target: '#myForm',
+        resultName: 'uppyResult',
+        getMetaFromForm: true,
+        addResultToForm: true,
+        submitOnSuccess: false, // true if you need the form to ACTUALLY be submitted once all files have been uploaded
+        triggerUploadOnSubmit: true, // true means start upload, overriding when form is submitted
+      })
+      .use(Dashboard, {
+        id: 'Dashboard',
+        trigger: null,
+        target: '#Dashboard',
+        inline: true,
+        width: 750,
+        height: 550,
+        thumbnailWidth: 280,
+        showLinkToFileUploadResult: false,
+        hideUploadButton: false,
+        hideRetryButton: false,
+        hidePauseResumeButton: false,
+        hideCancelButton: false,
+        hideProgressAfterFinish: false,
+        note: null,
+        doneButtonHandler: null,
+        closeAfterFinish: false,
+        disableStatusBar: false,
+        disableInformer: false,
+        disableThumbnailGenerator: false,
+        disablePageScrollWhenModalOpen: true,
+        animateOpenClose: true,
+        fileManagerSelectionType: 'files',
+        proudlyDisplayPoweredByUppy: true,
+        showSelectedFiles: true,
+        showRemoveButtonAfterComplete: false,
+        showNativePhotoCameraButton: false,
+        showNativeVideoCameraButton: false,
+        browserBackButtonClose: false,
+        theme: 'light',
+        autoOpenFileEditor: false,
+        disableLocalFiles: false,
+        height: 470,
+        showProgressDetails: true,
+        metaFields: [
+          { id: 'name', name: 'Name', placeholder: 'file name' },
+          { id: 'caption', name: 'Caption', placeholder: 'add description' },
+        ],
+      })
+      .on('complete', (result) => {
+        console.log(
+          'Upload complete! We’ve uploaded these files:',
+          result.successful
+        );
+      });
+  },
+  beforeUnmount() {
+    this.uppy.close();
+  },
   methods: {
     submitForm() {
       this.$buefy.dialog.confirm({
@@ -131,6 +226,11 @@ export default {
     isSubmitDisabled() {
       return !this.description;
     },
+    allUploadsComplete() {
+      this.uppyInstance.getFiles().filter((file) => {
+        return !file.progress.uploadComplete;
+      }).length < 1;
+    },
   },
 };
 </script>
@@ -155,8 +255,5 @@ export default {
 
 .dashboard-wrapper {
   z-index: 1;
-}
-
-.multiple-uploads-wrapper {
 }
 </style>

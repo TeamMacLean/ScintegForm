@@ -3,9 +3,13 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import ldap from './ldap';
 import _ from 'lodash';
-
+import multer from 'multer';
+//import fileUpload from 'express-fileupload';
 import getEmailOptions from '../modules/getEmailOptions';
 import sendEmail from '../modules/sendEmail';
+
+// OLD
+//import uploadApp from './uploads_OLD';
 
 import {
   Form,
@@ -45,12 +49,48 @@ const router = express.Router();
 // Transform req & res to have the same API as express
 // So we can use res.status() & res.json()
 const app = express();
+//app.use(fileUpload());
 router.use((req, res, next) => {
   Object.setPrototypeOf(req, app.request);
   Object.setPrototypeOf(res, app.response);
   req.res = res;
   res.req = req;
   next();
+});
+
+const upload = multer({
+  dest: 'uploads/',
+  //fileFilter,
+  limits: {
+    fileSize: 10000000000, // 10GB
+  },
+});
+
+/**
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+  if (!allowedTypes.includes(file.mimetype)) {
+    const error = new Error('Invalid file type');
+    error.code = 'LIMIT_FILE_TYPES';
+    return cb(error, false);
+  }
+};
+*/
+// middleware for file upload
+app.use(function (err, req, res, next) {
+  if (err.code === 'LIMIT_FILE_TYPES') {
+    res.send({
+      status: 422,
+      error: 'Only images are allowed',
+    });
+  }
+
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    res.send({
+      status: 422,
+      error: 'Allowed maximum individual file size is 10GB',
+    });
+  }
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -219,531 +259,83 @@ router.post('/logout', (req, res) => {
   res.sendStatus(200);
 });
 
-router.get('/form/new', async (req, res) => {
-  try {
-    const sessionUser = getUserFromReqHeaders(req);
-
-    const species = await Specie.find({}).sort({ date: 'descending' });
-    const genotypes = await Genotype.find({}).sort({ date: 'descending' });
-    const vectorSelections = await VectorSelection.find({}).sort({
-      date: 'descending',
-    });
-    const tdnaSelections = await TdnaSelection.find({}).sort({
-      date: 'descending',
-    });
-    const agroStrains = await AgroStrain.find({}).sort({ date: 'descending' });
-    const forms = await Form.find({}).sort({ date: 'descending' });
-    const nestedConstructs = forms.map((form) => form.constructs);
-    const flatConstructs = nestedConstructs.flat();
-    const previousConstructNames = flatConstructs.map(
-      (construct) => construct.constructName
-    );
-
-    res.send({
-      status: 200,
-      species,
-      genotypes,
-      vectorSelections,
-      tdnaSelections,
-      agroStrains,
-      previousConstructNames,
-      sessionUser,
-    });
-  } catch (error) {
-    res.send({ status: 500, error: error });
-    console.error(error);
-  }
-});
-
 router.post('/form/new', async (req, res) => {
-  const {
-    date,
-    username,
-    creatorIsAdmin,
-    creatorIsGroupLeader,
-    signatoryObj,
-    species,
-    genotype,
-    constructs,
-    notes,
-  } = req.body;
+  console.log('req.body');
+  console.log(req.body);
+  // const { description, dropFiles } = req.body;
 
-  let theStatus =
-    creatorIsGroupLeader || creatorIsAdmin ? 'approved' : 'pending approval';
+  // save files to folder whose contents are gitignored
+  // TODO
 
-  const signatoryId = signatoryObj._id;
-  const signatoryObjectId = mongoose.Types.ObjectId(signatoryId);
+  // correct email Options object for sendEmail
+  // TODO
+  // const emailOptions = {};
 
-  // calculate new TRF ID
-  const forms = await Form.find({}).sort({ date: 'descending' });
-  const trfIds = forms.map((f) => f.trfId);
-  var counter = 1;
-  var newTrfIdStr = 'TRF' + counter;
-  function recurseCheck(trfIdToCheck, counter) {
-    if (trfIds.includes(trfIdToCheck)) {
-      counter++;
-      trfIdToCheck = 'TRF' + counter;
-      return recurseCheck(trfIdToCheck, counter);
-    } else {
-      return trfIdToCheck;
-    }
-  }
-  newTrfIdStr = recurseCheck(newTrfIdStr, counter);
+  // await sendEmail(emailOptions).catch((err) => {
+  //   console.error('email failed', err);
+  //   res.send({ status: 500, error: err });
+  // });
 
-  // console.log('about to create form', newTrfIdStr);
-  //const newFormEntry =
-  await Form.create({
-    date: date,
-    username: username,
-    creatorIsAdmin: creatorIsAdmin,
-    creatorIsGroupLeader: creatorIsGroupLeader,
-    signatoryId: signatoryObjectId,
-    species: species,
-    genotype: genotype,
-    constructs: constructs,
-    notes: notes,
-    status: theStatus,
-    trfId: newTrfIdStr,
-  }).catch((err) => {
-    res.send({ status: 500, error: err });
-    console.err(error);
+  res.send({
+    status: 200,
+    message: 'Form submitted successfully',
+    // debugging: [description, dropFiles.length],
   });
-  // console.log('form created', newFormEntry);
-
-  const allGenotypes = await Genotype.find({}).sort({ date: 'descending' });
-  const allGenotypeNames = allGenotypes.length
-    ? allGenotypes.map((genotype) => genotype.name.toLowerCase())
-    : [];
-  if (!allGenotypeNames.includes(genotype.toLowerCase())) {
-    const res = await Genotype.create({
-      name: genotype,
-      archived: false,
-    });
-  }
-
-  if (theStatus === 'pending approval') {
-    // send Email to group leader and CC research assistant
-    const emailOptions = getEmailOptions('approval', {
-      signatoryObj,
-      trfId: newTrfIdStr,
-    });
-    const emailResults = await sendEmail(emailOptions).catch((err) => {
-      console.error('email failed', err);
-      res.send({ status: 200, error: err });
-    });
-    // console.log('email sent', emailResults);
-  } else {
-    console.log('auto approved, no email sent');
-  }
-
-  res.send({ status: 200, trfId: newTrfIdStr });
 });
 
-router.post('/form/delete', async (req, res) => {
-  try {
-    const { trfId, signatoryObj, username } = req.body;
-    const result = await Form.updateOne(
-      { trfId: trfId },
-      {
-        $set: {
-          status: 'deleted',
-        },
-      }
-    );
+// router.post('/uploads', async (req, res) => {
+//   // console.log('req');
+//   // console.log(req);
+//   console.log('req.files');
+//   console.log(req.files);
+//   console.log('req.body.files');
+//   console.log(req.body.files);
 
-    if (result.ok) {
-      // send Email to group leader and user and admin
+//   // const { description, dropFiles } = req.body;
 
-      const emailOptions = getEmailOptions('deletion', {
-        signatoryObj,
-        trfId,
-        username,
-      });
-      const emailResults = await sendEmail(emailOptions).catch((err) => {
-        console.error('email failed', err);
-        res.send({ status: 200, error: err });
-      });
-      // console.log('email sent', emailResults);
+//   // save files to folder whose contents are gitignored
+//   // TODO
 
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
+//   // correct email Options object for sendEmail
+//   // TODO
+//   // const emailOptions = {};
 
-router.post('/form/approve', async (req, res) => {
-  try {
-    const { trfId } = req.body;
-    const result = await Form.updateOne(
-      { trfId: trfId },
-      {
-        $set: {
-          status: 'approved',
-        },
-      }
-    );
+//   // await sendEmail(emailOptions).catch((err) => {
+//   //   console.error('email failed', err);
+//   //   res.send({ status: 500, error: err });
+//   // });
 
-    if (result.ok) {
-      // probably should email admin to update them, but they didnt ask for this feature
-
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-router.post('/form/deny', async (req, res) => {
-  try {
-    const { trfId } = req.body;
-    const result = await Form.updateOne(
-      { trfId: trfId },
-      {
-        $set: {
-          status: 'denied',
-        },
-      }
-    );
-
-    if (result.ok) {
-      // probably should email admin/user to update them, but they didnt ask for this feature
-
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-router.post('/form/inprogress', async (req, res) => {
-  try {
-    const { trfId, constructs } = req.body;
-    const newConstructs = constructs.map((construct) => ({
-      ...construct,
-      shortName: construct.shortName || null,
-    }));
-    const result = await Form.updateOne(
-      { trfId: trfId },
-      {
-        $set: {
-          status: 'in progress',
-          // overwrite previous constructs with new shortNames
-          constructs: newConstructs,
-        },
-      }
-    );
-
-    if (result.ok) {
-      // could email user but they didnt ask for this feature
-
-      // send Email to admin (though unnecessary it was requested)
-      const emailOptions = getEmailOptions('in progress', {
-        trfId,
-      });
-      const emailResults = await sendEmail(emailOptions).catch((err) => {
-        console.error('email failed', err);
-        res.send({ status: 200, error: err });
-      });
-      // console.log('email sent', emailResults);
-
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-router.post('/form/completed', async (req, res) => {
-  try {
-    const { trfId, completedMsg, username } = req.body;
-    const result = await Form.updateOne(
-      { trfId: trfId },
-      {
-        $set: {
-          status: 'completed',
-        },
-      }
-    );
-
-    if (result.ok) {
-      // send Email to admin (though unnecessary it was requested)
-
-      const emailOptions = getEmailOptions('completed', {
-        trfId,
-        username,
-        completedMsg,
-      });
-      const emailResults = await sendEmail(emailOptions).catch((err) => {
-        console.error('email failed', err);
-        res.send({ status: 200, error: err });
-      });
-      // console.log('email sent', emailResults);
-
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-// get everything needed for admin page
-router.get('/admin/', async (req, res) => {
-  try {
-    const sessionUser = getUserFromReqHeaders(req);
-
-    const admins = await Admin.find({}).sort({ date: 'descending' });
-    const species = await Specie.find({}).sort({ date: 'descending' });
-    const genotypes = await Genotype.find({}).sort({ date: 'descending' });
-    const vectorSelections = await VectorSelection.find({}).sort({
-      date: 'descending',
-    });
-    const tdnaSelections = await TdnaSelection.find({}).sort({
-      date: 'descending',
-    });
-    const agroStrains = await AgroStrain.find({}).sort({ date: 'descending' });
-    const groups = await Group.find({}).sort({ date: 'descending' });
-
-    res.send({
-      status: 200,
-      admins,
-      species,
-      genotypes,
-      vectorSelections,
-      tdnaSelections,
-      agroStrains,
-      groups,
-      sessionUser,
-    });
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-// lazy way to do this
-const mongoNames = [
-  'Specie',
-  'Genotype',
-  'VectorSelection',
-  'TdnaSelection',
-  'AgroStrain',
-  'Admin',
-];
-const mongoCollections = [
-  Specie,
-  Genotype,
-  VectorSelection,
-  TdnaSelection,
-  AgroStrain,
-  Admin,
-];
-
-router.post('/admin/active', async (req, res) => {
-  const { mongoName, _id, fieldToChange, newFieldValue } = req.body;
-
-  let index = mongoNames.indexOf(mongoName);
-  const result = await mongoCollections[index].updateOne(
-    { _id: mongoose.Types.ObjectId(_id) },
-    {
-      $set: {
-        [fieldToChange]: newFieldValue,
-      },
-    }
-  );
-
-  if (result.ok) {
-    res.send({ status: 200 });
-  } else {
-    throw new Error('Error updating form status in DB');
-  }
-});
-
-router.post('/admin/group', async (req, res) => {
-  try {
-    const { group } = req.body;
-    const { _id, name, researchAssistants, ldapGroups } = group;
-
-    const result = await Group.updateOne(
-      { _id: mongoose.Types.ObjectId(_id) },
-      {
-        $set: {
-          // no username rewrite for now
-          name,
-          researchAssistants,
-          ldapGroups,
-        },
-      }
-    );
-
-    if (result.ok) {
-      res.send({ status: 200 });
-    } else {
-      throw new Error('Error updating form status in DB');
-    }
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-// router.post('/email', async (req, res) => {
-//   try {
-//     const emailObj = getEmailOptions('test', {});
-//     const emailResults = await sendEmail(emailObj);
-//     console.log('emailRes', emailResults);
-
-//     res.send({ status: 200, emailResults });
-//   } catch (error) {
-//     res.send({ status: 'error', error: error });
-//     console.error(error);
-//   }
+//   res.send({
+//     status: 200,
+//     message: 'Upload submitted successfully',
+//     // debugging: [description, dropFiles.length],
+//   });
 // });
 
-router.post('/admin/additional', async (req, res) => {
-  try {
-    const { mongoName, newFieldValue } = req.body;
+// OLD
+// router.post('/uploads', uploadApp);
+router.post(
+  '/upload',
+  // this adds file metadata to req object
+  upload.single('file' /** appended to FormData obj */),
+  (req, res) => {
+    // https://github.com/kylefarris/clamscan#to-use-local-binary-method-of-scanning
 
-    let index = mongoNames.indexOf(mongoName);
-    const result = await mongoCollections[index].create({
-      name: newFieldValue,
-      archived: false,
-    });
-
-    res.send({ status: 200 });
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-router.get('/constructs', async (req, res) => {
-  try {
-    const sessionUser = getUserFromReqHeaders(req);
-
-    const forms = await Form.find({}).sort({ date: 'descending' });
-    const formsWithNestedConstructs = forms.map((form) => ({
-      constructs: form.constructs,
-      species: form.species,
-      genotype: form.genotype,
-      trfId: form.trfId,
-    }));
-
-    var flatConstructs = [];
-
-    formsWithNestedConstructs.forEach((form) => {
-      form.constructs.forEach((c) => {
-        flatConstructs.push({
-          longName: c.constructName,
-          shortName: c.shortName || null,
-          binaryVectorBackbone: c.binaryVectorBackbone,
-          tdnaSelection: c.tdnaSelection,
-          species: form.species,
-          genotype: form.genotype,
-          trfId: form.trfId,
-        });
-      });
-    });
+    const { file } = req.body;
 
     res.send({
       status: 200,
-      constructs: flatConstructs,
-      sessionUser,
+      file,
     });
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
   }
-});
+);
 
-router.get('/forms', async (req, res) => {
-  try {
-    const sessionUser = getUserFromReqHeaders(req);
+router.post('/uploads', upload.array('files'), (req, res) => {
+  console.log('req.files', req.files);
 
-    const forms = await Form.find({}).sort({ date: 'descending' });
-
-    const ldapGroups = await Group.find({}).sort({ date: 'descending' });
-
-    const formsWithSignatories = forms.map((form) => {
-      const theSigObj = ldapGroups.find((group) => {
-        const result = group._id.toString() === form.signatoryId.toString();
-        return result;
-      });
-      return {
-        creatorIsGroupLeader: form.creatorIsGroupLeader,
-        notes: form.notes,
-        status: form.status,
-        _id: form._id,
-        date: form.date,
-        username: form.username,
-        creatorIsAdmin: form.creatorIsAdmin,
-        species: form.species,
-        genotype: form.genotype,
-        constructs: form.constructs,
-        trfId: form.trfId,
-        createdAt: form.createdAt,
-        updatedAt: form.updatedAt,
-        signatoryObj: theSigObj,
-      };
-    });
-
-    res.send({
-      status: 200,
-      forms: formsWithSignatories,
-      ldapGroups,
-      sessionUser,
-    });
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
-});
-
-router.get('/form', async (req, res) => {
-  try {
-    const sessionUser = getUserFromReqHeaders(req);
-
-    const trfId = req.originalUrl.split('=')[1];
-
-    const theForm = await Form.findOne({ trfId: trfId });
-    const groupId = mongoose.Types.ObjectId(theForm.signatoryId);
-    const signObj = await Group.findById(groupId);
-
-    res.send({
-      status: 200,
-      creatorIsGroupLeader: theForm.creatorIsGroupLeader,
-      notes: theForm.notes,
-      status: theForm.status,
-      _id: theForm._id,
-      date: theForm.date,
-      username: theForm.username,
-      creatorIsAdmin: theForm.creatorIsAdmin,
-      signatoryObj: signObj,
-      species: theForm.species,
-      genotype: theForm.genotype,
-      constructs: theForm.constructs,
-      trfId: theForm.trfId,
-      sessionUser,
-    });
-  } catch (error) {
-    res.send({ status: 'error', error: error });
-    console.error(error);
-  }
+  res.send({
+    status: 200,
+  });
 });
 
 // Export the server middleware
