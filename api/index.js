@@ -11,19 +11,10 @@ import sendEmail from '../modules/sendEmail';
 // OLD
 //import uploadApp from './uploads_OLD';
 
-import {
-  Form,
-  Group,
-  Specie,
-  Genotype,
-  VectorSelection,
-  TdnaSelection,
-  AgroStrain,
-  Admin,
-} from './models';
+import { Form, Admin } from './models';
 
 try {
-  mongoose.connect('mongodb://localhost:27017/transplantform', {
+  mongoose.connect('mongodb://localhost:27017/scintegform', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     useFindAndModify: false,
@@ -138,102 +129,15 @@ router.get('/user', async (req, res) => {
 // Add POST - /api/login
 router.post('/login', async (req, res) => {
   if (req.body && req.body.username && req.body.password) {
+    // George, do ntalbot/george/debbie filtering here AND in the frontend
+    // TODO
+
     ldap
       .authenticate(req.body.username, req.body.password)
       .then(async (user) => {
-        let reqBodyUsername = req.body.username;
-        let userMemberOf = user.memberOf;
-        let userDisplayName = user.displayName;
-
-        // This is where you alter the roles for testing
-        if (
-          (req.body.username === 'pikej' || req.body.username === 'deeks') &&
-          req.body.radio
-        ) {
-          const radioValue = req.body.radio;
-          if (radioValue === 'jjones') {
-            reqBodyUsername = 'jjones';
-            userMemberOf = [
-              'CN=TSL-Data-Jonathan-Jones,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-              'CN=slproj_23_modify,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-            ];
-            userDisplayName = 'Jonathan Jones (FAKE)';
-          }
-          if (radioValue === 'alam') {
-            reqBodyUsername = 'alam';
-            userMemberOf = [
-              'CN=TSL-Data-Jonathan-Jones,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-              'CN=slproj_23_modify,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-            ];
-            userDisplayName = 'Maheen Alam (FAKE)';
-          }
-          if (radioValue === 'heal') {
-            reqBodyUsername = 'heal';
-            userMemberOf = [
-              'CN=TSL-Data-Jonathan-Jones,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-              'CN=slproj_23_modify,OU=TSLGroups,OU=NBIGroups,DC=nbi,DC=ac,DC=uk',
-            ];
-            userDisplayName = 'Robert Heal (FAKE)';
-          }
-        }
-
-        const adminDocs = await Admin.find({}).sort({ date: 'descending' });
-        const admins = adminDocs
-          .filter((admin) => !admin.archived)
-          .map((admin) => admin.name);
-        const userIsAdmin = admins.includes(reqBodyUsername);
-
-        const allLdapGroups = await Group.find({}).sort({ date: 'descending' });
-        const isGroupLeaderForObj =
-          allLdapGroups.find((group) => group.username === reqBodyUsername) ||
-          null;
-        const isResearchAssistantForObj =
-          allLdapGroups.find((group) => {
-            group.researchAssistants.includes(reqBodyUsername);
-            const res = group.researchAssistants.includes(reqBodyUsername);
-            return res;
-          }) || null;
-        const isResearchAssistantFor = isResearchAssistantForObj
-          ? isResearchAssistantForObj.name
-          : null;
-
-        let signatories = [];
-        if (userIsAdmin) {
-          signatories = allLdapGroups;
-        } else if (isGroupLeaderForObj) {
-          signatories = [isGroupLeaderForObj];
-        } else if (isResearchAssistantFor) {
-          signatories = [isResearchAssistantForObj];
-        } else {
-          userMemberOf.forEach((ldapGroupStr) => {
-            allLdapGroups.forEach((ldapGroup) => {
-              const alreadySignatoryUsernames = signatories.map(
-                (signatory) => signatory.username
-              );
-              if (
-                ldapGroup.ldapGroups.includes(ldapGroupStr) &&
-                !alreadySignatoryUsernames.includes(ldapGroup.username)
-              ) {
-                signatories.push(ldapGroup);
-              }
-            });
-          });
-        }
-        const abridgedSignatories = signatories.map((signatory) => ({
-          name: signatory.name,
-          username: signatory.username,
-          _id: signatory._id.toString(),
-          researchAssistants: signatory.researchAssistants,
-        }));
-
-        // signObj cannot be too big
         const signObj = {
-          username: reqBodyUsername,
-          name: userDisplayName,
-          isAdmin: userIsAdmin,
-          isGroupLeaderForObj: isGroupLeaderForObj,
-          isResearchAssistantFor: isResearchAssistantFor,
-          signatories: abridgedSignatories,
+          username: req.body.username,
+          // name: user.displayName,
         };
 
         sign(signObj)
@@ -259,59 +163,6 @@ router.post('/logout', (req, res) => {
   res.sendStatus(200);
 });
 
-router.post('/form/new', async (req, res) => {
-  console.log('req.body');
-  console.log(req.body);
-  // const { description, dropFiles } = req.body;
-
-  // save files to folder whose contents are gitignored
-  // TODO
-
-  // correct email Options object for sendEmail
-  // TODO
-  // const emailOptions = {};
-
-  // await sendEmail(emailOptions).catch((err) => {
-  //   console.error('email failed', err);
-  //   res.send({ status: 500, error: err });
-  // });
-
-  res.send({
-    status: 200,
-    message: 'Form submitted successfully',
-    // debugging: [description, dropFiles.length],
-  });
-});
-
-// router.post('/uploads', async (req, res) => {
-//   // console.log('req');
-//   // console.log(req);
-//   console.log('req.files');
-//   console.log(req.files);
-//   console.log('req.body.files');
-//   console.log(req.body.files);
-
-//   // const { description, dropFiles } = req.body;
-
-//   // save files to folder whose contents are gitignored
-//   // TODO
-
-//   // correct email Options object for sendEmail
-//   // TODO
-//   // const emailOptions = {};
-
-//   // await sendEmail(emailOptions).catch((err) => {
-//   //   console.error('email failed', err);
-//   //   res.send({ status: 500, error: err });
-//   // });
-
-//   res.send({
-//     status: 200,
-//     message: 'Upload submitted successfully',
-//     // debugging: [description, dropFiles.length],
-//   });
-// });
-
 // OLD
 // router.post('/uploads', uploadApp);
 router.post(
@@ -330,8 +181,71 @@ router.post(
   }
 );
 
+const getFinalPath = (path) => {
+  return path;
+};
+
+router.post('/form/new', upload.array('files'), async (req, res) => {
+  console.log(
+    'req.files',
+    req.files.map((f) => f.filename)
+  );
+  console.log('req.body.des', req.body.description);
+
+  // Transform files to database format
+
+  const mappedFiles = req.files.map((f) => ({
+    name: f.filename,
+    size: f.size,
+    mimetype: f.mimetype,
+    initialPath: f.path,
+    finalPath: getFinalPath(f),
+  }));
+  console.log(
+    'req.mappedFiles',
+    mappedFiles.map((f) => f.filename)
+  );
+
+  // Create new form
+
+  const formResult = await Form.create({
+    description: req.body.description,
+    files: mappedFiles,
+  });
+
+  if (!formResult._id) {
+    return res.status(500).json({
+      error: 'Error creating form in database',
+    });
+  }
+
+  console.log('formResult', formResult);
+
+  // TODO
+  const returnData = {
+    ...formResult,
+  };
+
+  // Move files to correct folder
+  // TODO
+
+  // correct email Options object for sendEmail
+  // TODO
+  // const emailOptions = {};
+
+  try {
+    //const emailResult = await sendEmail(emailOptions);
+
+    res.send({ status: 200, ...returnData });
+  } catch (error) {
+    res.send({ status: 500, error: error });
+  }
+});
+
+// OLD
 router.post('/uploads', upload.array('files'), (req, res) => {
   console.log('req.files', req.files);
+  console.log('req.body.des', req.body.description);
 
   res.send({
     status: 200,

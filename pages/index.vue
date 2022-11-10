@@ -1,34 +1,32 @@
 <template>
   <div>
     <h3 class="title is-3">
-      Report scientific misconduct at The Sainsbury Laboratory - {{ API_URL }}
+      Report scientific misconduct at The Sainsbury Laboratory
     </h3>
     <!-- <h4 class="title is-5">
       Report ID (randomly generated): {{ randomlyGeneratedID }}
     </h4> -->
-    <h4 class="title is-6">
+    <br />
+    <h4 class="subtitle">
       Please fill in the form below to report scientific misconduct. The form is
-      anonymous, and the description and uploaded files sent will be forwarded
-      by email to Nick Talbot (Executive Director) and Debbie Feather (Head of
-      Administration).
+      anonymous. On submission, an email is sent to Nick Talbot (Executive
+      Director) and Debbie Feather (Head of Administration), who will
+      investigate what you have filled out below.
     </h4>
-    <!-- <p>
+    <p>
       For issues please
       <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
-    </p> -->
-
-    <hr />
-    <div class="container">
-      <!-- contains form, so rename to SimpleUploadForm -->
-      <div class="multiple-uploads-wrapper">
-        <multiple-uploads />
-      </div>
-    </div>
+    </p>
 
     <hr />
 
-    <form id="myForm" class="form-wrapper" @submit.prevent="submit">
-      <b-field label="Description of incident(s)">
+    <form
+      id="myForm"
+      class="form-wrapper"
+      @submit.prevent="submitForm"
+      enctype="multipart/form-data"
+    >
+      <b-field label="*Description of incident(s) (mandatory)">
         <div class="description-wrapper">
           <p>
             You do not need to duplicate text found in files you wish to upload,
@@ -43,93 +41,147 @@
           ></b-input>
         </div>
       </b-field>
+      <hr />
+      <div class="container">
+        <!-- contains form, so rename to SimpleUploadForm -->
+        <div class="multiple-uploads-wrapper">
+          <multiple-uploads
+            :files="files"
+            :upload-files="uploadFiles"
+            :on-select-files="onSelectFiles"
+            :on-delete-file="onDeleteFile"
+            :validate-file="validateFile"
+          />
+        </div>
+        <div>
+          {{ this.files.length }} file{{ this.files.length === 1 ? '' : 's' }}
+          currently to be submitted.
+        </div>
+      </div>
 
       <hr />
       <b-button
         class="submit-button"
+        native-type="submit"
         :disabled="isSubmitDisabled"
-        type="submit"
-        @click="submitForm"
-        >Submit</b-button
       >
+        Submit
+      </b-button>
     </form>
   </div>
 </template>
 
 <script>
-import SimpleUpload from '~/components/SimpleUpload.vue';
 import MultipleUploads from '~/components/MultipleUploads.vue';
+
+const apiUrl = process.env.API_URL || 'http://localhost:3000';
 
 export default {
   name: 'Index',
   auth: false,
   components: {
     MultipleUploads,
-    SimpleUpload,
   },
   data() {
-    const apiUrl = process.env.API_URL || 'http://localhost:3000';
     return {
-      description: '',
-      uploadedFiles: [],
+      description: 'This is a test description',
       //randomlyGeneratedID: uuidv4().slice(0, 8),
       API_URL: apiUrl,
       files: [],
+      uploadFiles: [],
     };
   },
-  mounted() {},
-  beforeUnmount() {},
   methods: {
-    submitForm() {
-      this.$buefy.dialog.confirm({
-        title: 'Complete request',
-        message: `Are you sure you wish to submit this report as is? You will not be able to edit it once submitted.`,
-        trapFocus: true,
-        confirmText: 'Confirm Submission',
-        cancelText: 'Cancel',
-        onConfirm: () => {
-          return this.$axios
-            .post('/api/form/new', {
-              description: this.description,
-              dropFiles: this.uppy.getFiles(),
-            })
-            .then((res) => {
-              if (res.status === 200) {
-                this.$buefy.toast.open({
-                  message: `Request submitted successfully! ${res.data.debugging[0]} ${res.data.debugging[1]}`,
-                  type: 'is-success',
-                });
-                this.description = '';
-                this.dropFiles = [];
-              } else {
-                this.$buefy.toast.open({
-                  message:
-                    'Unsuccessful form submission. Please contact web admin and/or try again.\n' +
-                    res.data.error,
-                  type: 'is-danger',
-                });
-              }
-            })
-            .catch((err) => {
-              this.$buefy.toast.open({
-                message:
-                  'Unexpected error occurred. Please contact web admin and/or try again.\n' +
-                  err,
-                type: 'is-danger',
-              });
-            });
-        },
-      });
+    onSelectFiles(files, uploadFiles) {
+      this.files = files;
+      this.uploadFiles = uploadFiles;
     },
-    deleteDropFile(index) {
-      const dropFilesCopy = [...this.dropFiles];
-      dropFilesCopy.splice(index, 1);
-      this.dropFiles = dropFilesCopy;
+    onDeleteFile(files, uploadFiles) {
+      this.files = files;
+      this.uploadFiles = uploadFiles;
+    },
+    validateFile(file) {
+      const MAX_SIZE = 100000000; // 100MB
+      if (file.size > MAX_SIZE) {
+        return 'Max size for individual file is 10GB!';
+      } else {
+        return '';
+      }
+    },
+    async submitForm() {
+      // this.$buefy.dialog.confirm({
+      //   title: 'Complete request',
+      //   message: `Are you sure you wish to submit this report as is? You will not be able to edit it once submitted.`,
+      //   trapFocus: true,
+      //   confirmText: 'Confirm Submission',
+      //   cancelText: 'Cancel',
+      //   onConfirm: async () => {
+      const formData = new FormData();
+
+      _.forEach(this.uploadFiles, (file) => {
+        if (this.validateFile(file) === '') {
+          formData.append('files', file);
+        }
+      });
+
+      formData.append('description', this.description);
+
+      try {
+        const response = await this.$axios.post('/api/form/new', formData);
+
+        if (response.data.status === 200) {
+          this.$buefy.toast.open({
+            message: `Request submitted successfully!`,
+            type: 'is-success',
+          });
+          this.description = '';
+          this.files = [];
+          this.uploadFiles = [];
+        } else {
+          throw new Error(
+            response && response.data && response.data.error
+              ? response.data.error
+              : 'Unforeseen error'
+          );
+        }
+      } catch (error) {
+        console.error(error);
+        const errorMsg =
+          (error &&
+            error.response &&
+            error.response.data &&
+            error.response.data.error) ||
+          error ||
+          'An error occurred';
+        this.$buefy.toast.open({
+          message: errorMsg,
+          type: 'is-danger',
+        });
+      }
+
+      // },
+      // });
+    },
+    async sendFile() {
+      try {
+        await this.$axios.post('/api/uploads', formData);
+      } catch (error) {}
+
+      this.$buefy.toast.open({
+        message: 'File uploaded successfully!',
+        type: 'is-success',
+      });
+      this.files = [];
+      this.uploadFiles = [];
     },
   },
   computed: {
     isSubmitDisabled() {
-      return !this.description;
+      if (this.files.some((file) => !!file.invalidMessage)) {
+        return true;
+      } else {
+        return !this.description;
+      }
     },
   },
 };

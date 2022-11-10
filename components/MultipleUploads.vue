@@ -4,7 +4,7 @@
       TODO explain that you must upload all files before submitting, and max is
       10GB
     </div>
-    <form @submit.prevent="sendFile" enctype="multipart/form-data">
+    <div>
       <div class="field">
         <div class="file is-boxed is-primary">
           <label class="file-label">
@@ -12,7 +12,7 @@
               multiple
               type="file"
               ref="files"
-              @change="selectFile"
+              @change="selectFiles"
               class="file-input"
             />
 
@@ -24,8 +24,6 @@
             </span>
           </label>
         </div>
-
-        <div>Number of files to be uploaded to server: {{ files.length }}</div>
 
         <div class="field">
           <div class="item-wrapper" v-for="(file, index) in files" :key="index">
@@ -43,17 +41,7 @@
           </div>
         </div>
       </div>
-
-      <div class="field">
-        <button
-          :disabled="isSubmitDisabled"
-          type="submit"
-          class="button is-secondary"
-        >
-          Upload files to server
-        </button>
-      </div>
-    </form>
+    </div>
   </div>
 </template>
 
@@ -61,81 +49,41 @@
 import _ from 'lodash';
 export default {
   name: 'MultipleUploads',
-  data() {
-    return {
-      files: [],
-      uploadFiles: [],
-    };
-  },
+  props: [
+    'files',
+    'onSelectFiles',
+    'onDeleteFile',
+    'uploadFiles',
+    'validateFile',
+  ],
   methods: {
-    validate(file) {
-      const MAX_SIZE = 100000000; // 100MB
-      if (file.size > MAX_SIZE) {
-        return 'Max size for individual file is 10GB!';
-      } else {
-        return '';
-      }
-    },
-    selectFile() {
-      const files = this.$refs.files.files;
-      this.uploadFiles = [...this.uploadFiles, ...files];
-
-      this.files = [
+    selectFiles() {
+      const theFiles = this.$refs.files.files;
+      const imminentThisUploadFiles = [...this.uploadFiles, ...theFiles];
+      const imminentThisFiles = [
         ...this.files,
-        ..._.map(files, (file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          invalidMessage: this.validate(file),
-        })),
+        ..._.map(theFiles, (file) => {
+          return {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            invalidMessage: this.validateFile(file),
+          };
+        }),
       ];
+      this.onSelectFiles(imminentThisFiles, imminentThisUploadFiles);
     },
     deleteFile(index) {
-      this.files.splice(index, 1);
-      this.uploadFiles.splice(index, 1);
-    },
-    async sendFile() {
-      const formData = new FormData();
-      _.forEach(this.uploadFiles, (file) => {
-        if (this.validate(file) === '') {
-          formData.append('files', file);
-        }
-      });
+      const oldThisFiles = [...this.files];
+      const oldThisUploadFiles = [...this.uploadFiles];
 
-      try {
-        await this.$axios.post('/api/uploads', formData);
-      } catch (error) {
-        console.error(error);
-        const errorMsg =
-          (error &&
-            error.response &&
-            error.response.data &&
-            error.response.data.error) ||
-          error ||
-          'An error occurred';
-        this.$buefy.toast.open({
-          message: errorMsg,
-          type: 'is-danger',
-        });
-      }
+      const newThisFiles = _.filter(oldThisFiles, (file, i) => i !== index);
+      const newThisUploadFiles = _.filter(
+        oldThisUploadFiles,
+        (file, i) => i !== index
+      );
 
-      this.$buefy.toast.open({
-        message: 'File uploaded successfully!',
-        type: 'is-success',
-      });
-      this.files = [];
-      this.uploadFiles = [];
-    },
-  },
-  computed: {
-    isSubmitDisabled() {
-      if (this.files.length === 0) {
-        return true;
-      } else if (this.files.some((file) => !!file.invalidMessage)) {
-        return true;
-      } else {
-        return false;
-      }
+      this.onDeleteFile(newThisFiles, newThisUploadFiles);
     },
   },
 };
