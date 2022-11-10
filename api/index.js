@@ -53,7 +53,8 @@ const upload = multer({
   dest: 'uploads/',
   //fileFilter,
   limits: {
-    fileSize: 10000000000, // 10GB
+    fileSize: 100000000, // 100MB
+    files: 100,
   },
 });
 
@@ -79,7 +80,7 @@ app.use(function (err, req, res, next) {
   if (err.code === 'LIMIT_FILE_SIZE') {
     res.send({
       status: 422,
-      error: 'Allowed maximum individual file size is 10GB',
+      error: 'Allowed maximum individual file size is 100MB',
     });
   }
 });
@@ -182,62 +183,38 @@ router.post(
 );
 
 const getFinalPath = (path) => {
-  return path;
+  return path + '_FINAL';
 };
 
 router.post('/form/new', upload.array('files'), async (req, res) => {
-  console.log(
-    'req.files',
-    req.files.map((f) => f.filename)
-  );
-  console.log('req.body.des', req.body.description);
-
-  // Transform files to database format
-
-  const mappedFiles = req.files.map((f) => ({
-    name: f.filename,
-    size: f.size,
-    mimetype: f.mimetype,
-    initialPath: f.path,
-    finalPath: getFinalPath(f),
-  }));
-  console.log(
-    'req.mappedFiles',
-    mappedFiles.map((f) => f.filename)
-  );
-
-  // Create new form
-
-  const formResult = await Form.create({
-    description: req.body.description,
-    files: mappedFiles,
-  });
-
-  if (!formResult._id) {
-    return res.status(500).json({
-      error: 'Error creating form in database',
-    });
-  }
-
-  console.log('formResult', formResult);
-
-  // TODO
-  const returnData = {
-    ...formResult,
-  };
-
-  // Move files to correct folder
-  // TODO
-
-  // correct email Options object for sendEmail
-  // TODO
-  // const emailOptions = {};
-
   try {
+    // Create new form
+
+    const newFormData = {
+      description: req.body.description,
+      files: req.files.map((f) => ({
+        name: f.originalname,
+        size: f.size,
+        mimetype: f.mimetype,
+        initialPath: f.path,
+        finalPath: getFinalPath(f.path),
+      })),
+    };
+
+    const formResult = await Form.create(newFormData);
+
+    // Move files to correct folder
+    // TODO
+
+    // correct email Options object for sendEmail
+    // TODO
+    // const emailOptions = {};
+
     //const emailResult = await sendEmail(emailOptions);
 
-    res.send({ status: 200, ...returnData });
+    res.send({ status: 200 });
   } catch (error) {
+    console.log('error', error);
     res.send({ status: 500, error: error });
   }
 });

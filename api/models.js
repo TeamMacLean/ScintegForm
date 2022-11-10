@@ -43,19 +43,19 @@ const Form =
                 type: String,
                 required: true,
               },
-              initialPath: {
-                type: String,
-                required: true,
-              },
-              finalPath: {
-                type: String,
-                required: true,
-              },
               size: {
                 type: Number,
                 required: true,
               },
               mimetype: {
+                type: String,
+                required: true,
+              },
+              initialPath: {
+                type: String,
+                required: true,
+              },
+              finalPath: {
                 type: String,
                 required: true,
               },

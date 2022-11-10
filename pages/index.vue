@@ -14,7 +14,7 @@
       investigate what you have filled out below.
     </h4>
     <p>
-      For issues please
+      If you experience any issues, then please
       <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
     </p>
 
@@ -28,7 +28,7 @@
     >
       <b-field label="*Description of incident(s) (mandatory)">
         <div class="description-wrapper">
-          <p>
+          <p class="pb5">
             You do not need to duplicate text found in files you wish to upload,
             however an overview of your misconduct report is necessary here.
           </p>
@@ -45,7 +45,22 @@
       <div class="container">
         <!-- contains form, so rename to SimpleUploadForm -->
         <div class="multiple-uploads-wrapper">
+          <div class="label">Upload supporting files (optional)</div>
+          <div class="pb10">
+            Upload supporting documents here, for example: images, PDF files,
+            Microsoft Word files, etc. 100MB is the maximum size of each file.
+            Do not upload audio or zipped files. You can upload up to 100 files.
+            Despite this generous limit, please try to keep the total size of
+            what you are uploading to under 100MB, and preferably under 10
+            files. Please also consider using a LAN cable whilst on the NBI
+            network to upload files, to increase the network speed. Please check
+            the total size of the files you intend to upload before proceeding.
+          </div>
+          <!-- <div>You can achieve this usually by
+            zipping all your files into one compressed file (you can search
+            online how to if you are not sure).</div> -->
           <multiple-uploads
+            class="pb5"
             :files="files"
             :upload-files="uploadFiles"
             :on-select-files="onSelectFiles"
@@ -103,7 +118,7 @@ export default {
     validateFile(file) {
       const MAX_SIZE = 100000000; // 100MB
       if (file.size > MAX_SIZE) {
-        return 'Max size for individual file is 10GB!';
+        return 'Max size for individual file is 100MB!';
       } else {
         return '';
       }
@@ -134,9 +149,13 @@ export default {
             message: `Request submitted successfully!`,
             type: 'is-success',
           });
-          this.description = '';
-          this.files = [];
-          this.uploadFiles = [];
+          this.$router.push({
+            name: 'success',
+            params: {
+              description: this.description,
+              fileNames: this.uploadFiles.map((f) => f.name),
+            },
+          });
         } else {
           throw new Error(
             response && response.data && response.data.error
@@ -147,12 +166,11 @@ export default {
       } catch (error) {
         console.error(error);
         const errorMsg =
-          (error &&
-            error.response &&
-            error.response.data &&
-            error.response.data.error) ||
+          error.response.data.error ||
+          error.message ||
           error ||
           'An error occurred';
+
         this.$buefy.toast.open({
           message: errorMsg,
           type: 'is-danger',
@@ -202,7 +220,6 @@ export default {
 }
 
 .description-input {
-  max-width: 748px;
 }
 
 .dashboard-wrapper {
@@ -210,5 +227,12 @@ export default {
 }
 
 .multiple-uploads-wrapper {
+}
+
+.pb5 {
+  padding-bottom: 5px;
+}
+.pb10 {
+  padding-bottom: 10px;
 }
 </style>

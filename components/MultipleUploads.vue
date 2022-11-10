@@ -1,44 +1,35 @@
 <template>
-  <div>
-    <div>
-      TODO explain that you must upload all files before submitting, and max is
-      10GB
-    </div>
-    <div>
-      <div class="field">
-        <div class="file is-boxed is-primary">
-          <label class="file-label">
-            <input
-              multiple
-              type="file"
-              ref="files"
-              @change="selectFiles"
-              class="file-input"
-            />
+  <div class="field">
+    <div class="file is-boxed is-primary pb5">
+      <label class="file-label">
+        <input
+          multiple
+          type="file"
+          ref="files"
+          @change="selectFiles"
+          class="file-input"
+        />
 
-            <span class="file-cta">
-              <!-- <span class="file-icon">
+        <span class="file-cta">
+          <!-- <span class="file-icon">
               <i class="folder-text-outline"></i>
             </span> -->
-              <span class="file-label"> Choose a file… </span>
-            </span>
-          </label>
-        </div>
+          <span class="file-label"> Choose a file… </span>
+        </span>
+      </label>
+    </div>
 
-        <div class="field">
-          <div class="item-wrapper" v-for="(file, index) in files" :key="index">
-            <a @click.prevent="deleteFile(index)" class="delete"></a>
-            <div
-              :class="`file-name-wrapper ${
-                file.invalidMessage && 'has-text-danger'
-              }`"
-            >
-              {{
-                file.name +
-                (file.invalidMessage ? ` (${file.invalidMessage})` : '')
-              }}
-            </div>
-          </div>
+    <div class="field pb5">
+      <div class="item-wrapper" v-for="(file, index) in files" :key="index">
+        <a @click.prevent="deleteFile(index)" class="delete"></a>
+        <div
+          :class="`file-name-wrapper ${
+            file.invalidMessage && 'has-text-danger'
+          }`"
+        >
+          {{
+            file.name + (file.invalidMessage ? ` (${file.invalidMessage})` : '')
+          }}
         </div>
       </div>
     </div>
@@ -98,5 +89,9 @@ export default {
 .file-name-wrapper {
   padding-left: 10px;
   text-align: center;
+}
+
+.pb5 {
+  padding-bottom: 5px;
 }
 </style>
