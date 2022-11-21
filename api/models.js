@@ -32,6 +32,10 @@ const Form =
     'Form',
     new Schema(
       {
+        deleted: {
+          type: Boolean,
+          default: false,
+        },
         description: {
           type: String,
           required: true,
@@ -56,6 +60,18 @@ const Form =
                 required: true,
               },
               finalPath: {
+                type: String,
+                required: true,
+              },
+              fieldname: {
+                type: String,
+                required: true,
+              },
+              originalname: {
+                type: String,
+                required: true,
+              },
+              encoding: {
                 type: String,
                 required: true,
               },

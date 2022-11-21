@@ -50,6 +50,8 @@ router.use((req, res, next) => {
 });
 
 const upload = multer({
+  // The buffer stream can be converted into binary data if we use dest param in multer
+  // more: https://medium.com/geekculture/file-upload-and-download-in-node-js-c524a8050c8f
   dest: 'uploads/',
   //fileFilter,
   limits: {
@@ -198,6 +200,9 @@ router.post('/form/new', upload.array('files'), async (req, res) => {
         mimetype: f.mimetype,
         initialPath: f.path,
         finalPath: getFinalPath(f.path),
+        fieldname: f.fieldname,
+        originalname: f.originalname,
+        encoding: f.encoding,
       })),
     };
 

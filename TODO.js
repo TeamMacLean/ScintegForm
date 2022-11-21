@@ -1,9 +1,11 @@
 // MUST
-// Finish upload form API
-// View form submission page (once logged in as admin)
-//    - download files from form submission page
-//        - https://programming.vip/docs/node.js-upload-and-download-files-using-multer.html
-//        - https://medium.com/geekculture/file-upload-and-download-in-node-js-c524a8050c8f
+// Finish upload form API new form method in index.js
+// Retrieve submitted form based on URL params
+// Log in as admin
+// Only submitted forms should be visible to admin
+// Download files from form submission page
+//    - https://programming.vip/docs/node.js-upload-and-download-files-using-multer.html
+//    - https://medium.com/geekculture/file-upload-and-download-in-node-js-c524a8050c8f
 
 // SHOULD
 // upload progress bar (YT tutorial)
@@ -11,8 +13,8 @@
 // unsuccessful form submission check error handling
 // Strip out unnecessary code
 // Anonymously report issue to Webmaster with site
-// in/exclude zip+music files (put entire actual file object into mongoDB for reinflation?) (check bookmark folder)
+// reference ID when issue with already submitted file
+// include zip+music(+audio?) files
 
 // COULD
 // Get domain (scinteg.tsl.ac.uk) from .env or calculated in sendEmail.js
-// workaround for audio file raw data processing in backend
