@@ -7,6 +7,20 @@
     "_name": "_1df06d42"
   },
   {
+    "name": "submission",
+    "path": "/submission",
+    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/submission.vue",
+    "chunkName": "pages/submission",
+    "_name": "_88a39958"
+  },
+  {
+    "name": "success",
+    "path": "/success",
+    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/success.vue",
+    "chunkName": "pages/success",
+    "_name": "_5d5fa3ab"
+  },
+  {
     "name": "index",
     "path": "/",
     "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/index.vue",

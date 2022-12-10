@@ -5,8 +5,9 @@ import ldap from './ldap';
 import _ from 'lodash';
 import multer from 'multer';
 //import fileUpload from 'express-fileupload';
-import getEmailOptions from '../modules/getEmailOptions';
-import sendEmail from '../modules/sendEmail';
+// import getEmailOptions from '../modules/getEmailOptions';
+// import sendEmail from '../modules/sendEmail';
+import sendWebmasterEmail from '../modules/sendWebmasterEmail';
 
 // OLD
 //import uploadApp from './uploads_OLD';
@@ -215,7 +216,12 @@ router.post('/form/new', upload.array('files'), async (req, res) => {
     // TODO
     // const emailOptions = {};
 
-    //const emailResult = await sendEmail(emailOptions);
+    console.log('formResult', formResult);
+
+    console.log('reached 6');
+    const emailResult = await sendWebmasterEmail(formResult._id);
+    console.log('reached 7');
+    console.log('emailResult', emailResult);
 
     res.send({ status: 200 });
   } catch (error) {

@@ -49,12 +49,8 @@
           <div class="pb10">
             Upload supporting documents here, for example: images, PDF files,
             Microsoft Word files, etc. 100MB is the maximum size of each file.
-            Do not upload audio or zipped files. You can upload up to 100 files.
-            Despite this generous limit, please try to keep the total size of
-            what you are uploading to under 100MB, and preferably under 10
-            files. Please also consider using a LAN cable whilst on the NBI
-            network to upload files, to increase the network speed. Please check
-            the total size of the files you intend to upload before proceeding.
+            You can upload up to 100 files. Consider using a LAN cable whilst on
+            the NBI network to upload files.
           </div>
           <!-- <div>You can achieve this usually by
             zipping all your files into one compressed file (you can search

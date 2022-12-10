@@ -6,6 +6,8 @@
 // Download files from form submission page
 //    - https://programming.vip/docs/node.js-upload-and-download-files-using-multer.html
 //    - https://medium.com/geekculture/file-upload-and-download-in-node-js-c524a8050c8f
+// Check free disk space for VM
+// Install/check on VM: git, nvm/node/npm, mongodb, pm2, nginx
 
 // SHOULD
 // upload progress bar (YT tutorial)
