@@ -323,7 +323,13 @@ router.post('/form/new', upload.array('files'), async (req, res) => {
     try {
       await transporter.sendMail(mailOptions);
       console.log(`Email sent successfully for form ID: ${formId}`);
-      res.status(200).send({ status: 200, message: 'Email sent successfully' });
+      res
+        .status(200)
+        .send({
+          status: 200,
+          message: 'Email sent successfully',
+          formId: formId,
+        });
     } catch (error) {
       console.error(`Error sending email for form ID: ${formId}`);
       console.error(error);

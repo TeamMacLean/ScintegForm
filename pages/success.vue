@@ -16,6 +16,9 @@
       <br />
       <h5 class="title is-5 pb20">Submitted information:</h5>
 
+      <h6 class="subtitle">Submitted Form ID:</h6>
+      <p>{{ this.formId }}</p>
+      <br />
       <h6 class="subtitle">Description:</h6>
       <p>{{ this.description }}</p>
       <br />
@@ -54,11 +57,12 @@ export default {
   auth: false,
   data() {
     console.log(this.$route.params);
-    const { description, fileNames } = this.$route.params;
+    const { description, fileNames, formId } = this.$route.params;
 
     return {
       description,
       fileNames,
+      formId,
     };
   },
   methods: {

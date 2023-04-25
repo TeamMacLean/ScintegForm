@@ -153,6 +153,7 @@ export default {
             params: {
               description: this.description,
               fileNames: this.uploadFiles.map((f) => f.name),
+              formId: response.data.formId,
             },
           });
         } else {
