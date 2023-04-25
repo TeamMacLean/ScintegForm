@@ -2,36 +2,36 @@
   {
     "name": "help",
     "path": "/help",
-    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/help.vue",
+    "component": "/var/www/ScintegForm/pages/help.vue",
     "chunkName": "pages/help",
-    "_name": "_467d18c9"
+    "_name": "_00a2a9e7"
   },
   {
     "name": "index_OLD",
     "path": "/index_OLD",
-    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/index_OLD.vue",
+    "component": "/var/www/ScintegForm/pages/index_OLD.vue",
     "chunkName": "pages/index_OLD",
-    "_name": "_1df06d42"
+    "_name": "_d6624238"
   },
   {
     "name": "submission",
     "path": "/submission",
-    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/submission.vue",
+    "component": "/var/www/ScintegForm/pages/submission.vue",
     "chunkName": "pages/submission",
-    "_name": "_88a39958"
+    "_name": "_209df5f2"
   },
   {
     "name": "success",
     "path": "/success",
-    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/success.vue",
+    "component": "/var/www/ScintegForm/pages/success.vue",
     "chunkName": "pages/success",
-    "_name": "_5d5fa3ab"
+    "_name": "_771215cd"
   },
   {
     "name": "index",
     "path": "/",
-    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/index.vue",
+    "component": "/var/www/ScintegForm/pages/index.vue",
     "chunkName": "pages/index",
-    "_name": "_0e4ff0fa"
+    "_name": "_ce46f8c8"
   }
 ]
