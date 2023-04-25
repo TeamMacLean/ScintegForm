@@ -2,9 +2,16 @@
   <div>
     <nav class="navbar" role="navigation" aria-label="main navigation">
       <div class="navbar-brand">
-        <nuxt-link to="/" class="navbar-item">
-          <b class="has-text-primary">Scinteg</b>
+        <nuxt-link to="/" class="navbar-item has-text-primary">
+          Scinteg Form
         </nuxt-link>
+      </div>
+      <div class="navbar-menu">
+        <div class="navbar-end">
+          <nuxt-link to="/help" class="navbar-item help-link help-text">
+            Request Help
+          </nuxt-link>
+        </div>
       </div>
     </nav>
   </div>
@@ -37,5 +44,23 @@ export default {
 .underline {
   text-decoration: underline;
   color: purple;
+}
+
+.help-link {
+  margin-left: auto;
+  margin-right: 1rem;
+  text-decoration: underline;
+}
+
+.has-text-primary {
+  font-size: 3rem;
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.help-text {
+  font-size: 2rem;
+  font-weight: bold;
+  color: blue;
 }
 </style>

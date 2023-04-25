@@ -9,6 +9,10 @@ import multer from 'multer';
 // import sendEmail from '../modules/sendEmail';
 import sendWebmasterEmail from '../modules/sendWebmasterEmail';
 
+import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+dotenv.config();
+
 // OLD
 //import uploadApp from './uploads_OLD';
 
@@ -238,6 +242,34 @@ router.post('/uploads', upload.array('files'), (req, res) => {
   res.send({
     status: 200,
   });
+});
+
+// HELP
+
+router.post('/help', async (req, res) => {
+  const { subject, message } = req.body;
+
+  const { SMTP_HOST, SMTP_PORT } = process.env;
+
+  let transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+  });
+
+  let mailOptions = {
+    from: 'TSL Transplant Website <scinteg@tsl.ac.uk>',
+    to: 'deeks@nbi.ac.uk',
+    subject: `Scinteg anonymous query: ${subject}`, // Subject line
+    text: message,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    res.status(200).send('Email sent successfully');
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('An error occurred');
+  }
 });
 
 // Export the server middleware

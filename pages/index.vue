@@ -50,7 +50,7 @@
             Upload supporting documents here, for example: images, PDF files,
             Microsoft Word files, etc. 100MB is the maximum size of each file.
             You can upload up to 100 files. Consider using a LAN cable whilst on
-            the NBI network to upload files.
+            the NBI network to upload large files.
           </div>
           <!-- <div>You can achieve this usually by
             zipping all your files into one compressed file (you can search
@@ -95,7 +95,8 @@ export default {
   },
   data() {
     return {
-      description: 'This is a test description',
+      description: '',
+      //description: 'This is a test description',
       //randomlyGeneratedID: uuidv4().slice(0, 8),
       API_URL: apiUrl,
       files: [],
