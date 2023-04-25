@@ -2,8 +2,7 @@
   <div>
     <h3 class="title is-3">Anonymous incident report: {{ date }}</h3>
     <p>
-      If you experience any issues with retrieving this report, then please
-      <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
+      If you experience any issues with retrieving this report, then please click 'Request Help' in the top-right corner.</a>
     </p>
 
     <hr />

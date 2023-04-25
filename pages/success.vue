@@ -7,8 +7,8 @@
       <br />
       <p>
         If you become worried about any technical issues that may have hindered
-        your submission and thus its investigation, then please
-        <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
+        your submission and thus its investigation, then please click 'Request
+        Help' in the top left corner.
       </p>
     </div>
     <div v-else>
@@ -41,9 +41,8 @@
       </p>
       <p>
         If you become worried about any technical issues that may have hindered
-        your submission and thus its investigation, then please
-        <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster</a> with an
-        approximate timestamp of your attempted submission.
+        your submission and thus its investigation, then please click 'Request
+        Help' in the top right corner.
       </p>
     </div>
   </div>

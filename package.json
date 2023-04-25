@@ -46,6 +46,7 @@
     "vue": "^2.6.12",
     "vue-server-renderer": "^2.6.12",
     "vue-sweetalert2": "^2.1.1",
+    "vue-textarea-autosize": "^1.1.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

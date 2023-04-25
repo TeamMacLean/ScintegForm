@@ -14,8 +14,8 @@
       investigate what you have filled out below.
     </h4>
     <p>
-      If you experience any issues, then please
-      <a href="mailto:george.deeks@tsl.ac.uk">email the Webmaster.</a>
+      If you experience any issues, then please click 'Request Help' in the
+      top-right corner of the screen.
     </p>
 
     <hr />
@@ -32,15 +32,17 @@
             You do not need to duplicate text found in files you wish to upload,
             however an overview of your misconduct report is necessary here.
           </p>
-          <b-input
+          <textarea-autosize
             required
             class="description-input"
             v-model="description"
             maxlength="20000"
+            :min-height="100"
             type="textarea"
-          ></b-input>
+          ></textarea-autosize>
         </div>
       </b-field>
+
       <hr />
       <div class="container">
         <!-- contains form, so rename to SimpleUploadForm -->
@@ -217,6 +219,8 @@ export default {
 }
 
 .description-input {
+  font-size: 1.125rem;
+  padding: 0.5rem;
 }
 
 .dashboard-wrapper {

@@ -200,7 +200,7 @@ export async function setContext (app, context) {
       payload: context.payload,
       error: context.error,
       base: app.router.options.base,
-      env: {"WEBMASTER":"deeks","WEBMASTER_TESTING":"true","EMAIL_RECIPIENTS":"SL-TC@nbi.ac.uk","SMTP_HOST":"mail.nbi.ac.uk","SMTP_PORT":"25"}
+      env: {"WEBMASTER":"deeks","WEBMASTER_TESTING":"true","EMAIL_RECIPIENTS":"talbot,feather","SMTP_HOST":"mail.nbi.ac.uk","SMTP_PORT":"25"}
     }
     // Only set once
 

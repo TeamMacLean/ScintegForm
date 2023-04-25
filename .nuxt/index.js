@@ -20,6 +20,7 @@ import nuxt_plugin_axios_b45fe938 from 'nuxt_plugin_axios_b45fe938' // Source: .
 import nuxt_plugin_workbox_18699100 from 'nuxt_plugin_workbox_18699100' // Source: ./workbox.js (mode: 'client')
 import nuxt_plugin_metaplugin_df9602da from 'nuxt_plugin_metaplugin_df9602da' // Source: ./pwa/meta.plugin.js (mode: 'all')
 import nuxt_plugin_iconplugin_d646b7f2 from 'nuxt_plugin_iconplugin_d646b7f2' // Source: ./pwa/icon.plugin.js (mode: 'all')
+import nuxt_plugin_TextareaAutosize_54db22d7 from 'nuxt_plugin_TextareaAutosize_54db22d7' // Source: ../plugins/TextareaAutosize.js (mode: 'all')
 import nuxt_plugin_plugin_5491fda0 from 'nuxt_plugin_plugin_5491fda0' // Source: ./auth/plugin.js (mode: 'all')
 
 // Component: <ClientOnly>
@@ -243,6 +244,10 @@ async function createApp(ssrContext, config = {}) {
 
   if (typeof nuxt_plugin_iconplugin_d646b7f2 === 'function') {
     await nuxt_plugin_iconplugin_d646b7f2(app.context, inject)
+  }
+
+  if (typeof nuxt_plugin_TextareaAutosize_54db22d7 === 'function') {
+    await nuxt_plugin_TextareaAutosize_54db22d7(app.context, inject)
   }
 
   if (typeof nuxt_plugin_plugin_5491fda0 === 'function') {

@@ -7,6 +7,11 @@
         anonymously contact the Webmaster here.
       </p>
       <br />
+      <p>
+        Please keep your anonymity in mind when contacting the Webmaster - this
+        form submission will not be traced back to you.
+      </p>
+      <br />
       <p>Both fields are required in order to submit the form.</p>
       <br />
       <form @submit.prevent="submitForm">
@@ -26,6 +31,7 @@
             ></textarea>
           </div>
         </div>
+        <br />
         <div class="field">
           <div class="control">
             <button
@@ -33,13 +39,15 @@
               type="submit"
               :disabled="!subject || !message"
             >
-              Send
+              Send (sends help request)
             </button>
           </div>
         </div>
       </form>
       <br />
-      <nuxt-link to="/" class="button is-light">Back to Home</nuxt-link>
+      <nuxt-link to="/" class="button is-light"
+        >Back to Home (cancels help request)</nuxt-link
+      >
     </div>
   </div>
 </template>

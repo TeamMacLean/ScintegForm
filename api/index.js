@@ -4,19 +4,26 @@ import jwt from 'jsonwebtoken';
 import ldap from './ldap';
 import _ from 'lodash';
 import multer from 'multer';
-//import fileUpload from 'express-fileupload';
-// import getEmailOptions from '../modules/getEmailOptions';
-// import sendEmail from '../modules/sendEmail';
-import sendWebmasterEmail from '../modules/sendWebmasterEmail';
+import path from 'path';
+import fs from 'fs';
 
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 dotenv.config();
 
+const { WEBMASTER, WEBMASTER_TESTING, SMTP_HOST, SMTP_PORT } = process.env;
+
+const emailRecipientsStr = process.env.EMAIL_RECIPIENTS; // Get the string value of the environment variable
+const emailRecipientsArr = emailRecipientsStr.split(',').map((s) => s.trim()); // Split the string into an array and remove whitespace
+
+const webmasterEmail = `${WEBMASTER}@nbi.ac.uk`;
+
 // OLD
 //import uploadApp from './uploads_OLD';
 
 import { Form, Admin } from './models';
+
+const _path = path;
 
 try {
   mongoose.connect('mongodb://localhost:27017/scintegform', {
@@ -189,14 +196,16 @@ router.post(
   }
 );
 
-const getFinalPath = (path) => {
-  return path + '_FINAL';
-};
-
 router.post('/form/new', upload.array('files'), async (req, res) => {
   try {
-    // Create new form
+    const uploadDir = path.join(__dirname, '..', 'uploads');
 
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+      console.log('Created upload directory: ' + uploadDir);
+    }
+
+    // Create new form
     const newFormData = {
       description: req.body.description,
       files: req.files.map((f) => ({
@@ -204,7 +213,7 @@ router.post('/form/new', upload.array('files'), async (req, res) => {
         size: f.size,
         mimetype: f.mimetype,
         initialPath: f.path,
-        finalPath: getFinalPath(f.path),
+        finalPath: _path.join(uploadDir, `${f.filename}_FINAL`),
         fieldname: f.fieldname,
         originalname: f.originalname,
         encoding: f.encoding,
@@ -213,43 +222,124 @@ router.post('/form/new', upload.array('files'), async (req, res) => {
 
     const formResult = await Form.create(newFormData);
 
-    // Move files to correct folder
-    // TODO
+    // Move files to the correct folder
+    newFormData.files.forEach(async (file) => {
+      const { initialPath, finalPath } = file;
+      if (!fs.existsSync(initialPath)) {
+        console.error(`Error: File not found: ${initialPath}`);
+        return;
+      }
 
-    // correct email Options object for sendEmail
-    // TODO
-    // const emailOptions = {};
+      try {
+        await fs.promises.rename(initialPath, finalPath);
+        console.log(`File moved from ${initialPath} to ${finalPath}`);
+      } catch (error) {
+        console.error(`Error moving file: ${initialPath} to ${finalPath}`);
+        console.error(error);
+      }
+    });
 
-    console.log('formResult', formResult);
+    // Send email with attachments
+    const formId = mongoose.Types.ObjectId(formResult._id).toString();
 
-    console.log('reached 6');
-    const emailResult = await sendWebmasterEmail(formResult._id);
-    console.log('reached 7');
-    console.log('emailResult', emailResult);
+    let transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+    });
 
-    res.send({ status: 200 });
+    let attachments = newFormData.files.map((file) => {
+      return {
+        filename: file.name,
+        path: file.finalPath,
+        contentType: file.mimetype,
+      };
+    });
+
+    const emailRecipients = emailRecipientsArr.map((r) => {
+      if (WEBMASTER_TESTING) {
+        return `${WEBMASTER}+${r}@nbi.ac.uk`;
+      } else {
+        return `${r}@nbi.ac.uk`;
+      }
+    });
+
+    console.log('Sending email to', emailRecipients);
+
+    const emailContent = () => {
+      var filesStr =
+        req.files && req.files.length
+          ? req.files.map((f) => f.originalname).join(', ')
+          : '(No files submitted by complainant)';
+      const body = `
+        <table cellpadding="20" cellspacing="0" style="width:100%; font-family: Arial, sans-serif; font-size: 14px;">
+          <tr>
+            <td style="padding: 20px; border-top: 1px solid #ccc; border-left: 1px solid #ccc; border-right: 1px solid #ccc;">Dear Nick and Debbie,</td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; border-left: 1px solid #ccc; border-right: 1px solid #ccc;">A complaint has been submitted on the Scinteg website regarding scientific misconduct at TSL. This email alerts you to all the submitted details:</td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; border-left: 1px solid #ccc; border-right: 1px solid #ccc;">
+              <table cellpadding="5" cellspacing="0" style="width:100%; font-family: Arial, sans-serif; font-size: 14px;">
+                <tr>
+                  <td style="width: 120px;"><strong>Description:</strong></td>
+                  <td>${req.body.description}</td>
+                </tr>
+                <tr>
+                  <td style="width: 120px;"><strong>Files attached:</strong></td>
+                  <td>${filesStr}</td>
+                </tr>
+                <tr>
+                  <td style="width: 120px;"><strong>Form Submission ID:</strong></td>
+                  <td>${formId}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; border-left: 1px solid #ccc; border-right: 1px solid #ccc;">If you encounter any issues with this email and/or its contents, please forward it to the webmaster at ${webmasterEmail}.</td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; border-left: 1px solid #ccc; border-right: 1px solid #ccc;">Thank you for your attention to this matter.</td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; border-left: 1px solid #ccc; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc;">Best regards,<br/>The Scinteg website</td>
+          </tr>
+        </table>
+      `;
+
+      return body;
+    };
+
+    let mailOptions = {
+      from: 'TSL Transplant Website <scinteg@tsl.ac.uk>',
+      to: emailRecipients,
+      bcc: webmasterEmail,
+      subject: `Scinteg form submission - ACTION REQUIRED`,
+      html: emailContent(),
+      attachments: attachments,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`Email sent successfully for form ID: ${formId}`);
+      res.status(200).send({ status: 200, message: 'Email sent successfully' });
+    } catch (error) {
+      console.error(`Error sending email for form ID: ${formId}`);
+      console.error(error);
+      res.status(500).send('An error occurred');
+    }
   } catch (error) {
-    console.log('error', error);
+    console.error(`Error creating form`);
+    console.error(error);
     res.send({ status: 500, error: error });
   }
-});
-
-// OLD
-router.post('/uploads', upload.array('files'), (req, res) => {
-  console.log('req.files', req.files);
-  console.log('req.body.des', req.body.description);
-
-  res.send({
-    status: 200,
-  });
 });
 
 // HELP
 
 router.post('/help', async (req, res) => {
   const { subject, message } = req.body;
-
-  const { SMTP_HOST, SMTP_PORT } = process.env;
 
   let transporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -258,7 +348,7 @@ router.post('/help', async (req, res) => {
 
   let mailOptions = {
     from: 'TSL Transplant Website <scinteg@tsl.ac.uk>',
-    to: 'deeks@nbi.ac.uk',
+    to: webmasterEmail,
     subject: `Scinteg anonymous query: ${subject}`, // Subject line
     text: message,
   };

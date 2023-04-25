@@ -1,5 +1,12 @@
 [
   {
+    "name": "help",
+    "path": "/help",
+    "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/help.vue",
+    "chunkName": "pages/help",
+    "_name": "_467d18c9"
+  },
+  {
     "name": "index_OLD",
     "path": "/index_OLD",
     "component": "/Users/deeks/Local docs/Local GitHub/ScintegForm/pages/index_OLD.vue",

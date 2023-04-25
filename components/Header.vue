@@ -8,7 +8,11 @@
       </div>
       <div class="navbar-menu">
         <div class="navbar-end">
-          <nuxt-link to="/help" class="navbar-item help-link help-text">
+          <nuxt-link
+            target="_blank"
+            to="/help"
+            class="navbar-item help-link help-text"
+          >
             Request Help
           </nuxt-link>
         </div>
