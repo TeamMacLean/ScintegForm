@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+import path from 'node:path';
 import { loadConfig } from '../server/config.js';
 
 test('missing mail mode captures mail; legacy production recipients cannot enable delivery', () => {
@@ -22,7 +24,7 @@ test('production evidence needs an absolute DATA_DIR outside the application dir
   assert.throws(() => loadConfig(production), /DATA_DIR/);
   assert.throws(() => loadConfig({ ...production, DATA_DIR: 'var/production' }), /DATA_DIR/);
   assert.throws(() => loadConfig({ ...production, DATA_DIR: fileURLToPath(new URL('../var/production', import.meta.url)) }), /DATA_DIR/);
-  assert.equal(loadConfig({ ...production, DATA_DIR: '/var/lib/scinteg/data' }).dataDir, '/var/lib/scinteg/data');
+  assert.equal(loadConfig({ ...production, DATA_DIR: '/var/lib/scinteg/data' }).dataDir, path.join(realpathSync('/var'), 'lib/scinteg/data'));
 });
 
 test('private evidence cannot be configured under the public web directory', () => {

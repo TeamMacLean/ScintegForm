@@ -1,0 +1,20 @@
+[Unit]
+Description=Scinteg independent health check and webmaster alert
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=scinteg
+Group=scinteg
+WorkingDirectory=/opt/scinteg/app
+ExecStart=/opt/scinteg/node-v24.22.3-linux-x64/bin/node scripts/run.js monitor --env-file /etc/scinteg.env --alert
+Environment=NODE_ENV=production
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/scinteg
+# HTTP failure is recorded in the journal and emailed; the next timer run retries.
+SuccessExitStatus=1

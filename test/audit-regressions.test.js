@@ -24,7 +24,7 @@ async function metadataOnlyOffice(includeMetadata) {
 
 test('independent audit regression checks use isolated MongoDB and synthetic files', async t => {
   const mongo = await temporaryMongo();
-  const config = loadConfig({ DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, MIN_FREE_BYTES: '0' });
+  const config = loadConfig({ DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, MIN_FREE_BYTES: '0', MAX_CONCURRENT_UPLOADS: '4' });
   let db = await connectDatabase(config);
   const mailer = createMailer(config);
   t.after(async () => { mailer.close(); await db.close(); await mongo.stop(); });

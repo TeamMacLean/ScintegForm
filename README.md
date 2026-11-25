@@ -1,6 +1,6 @@
 # ScintegForm
 
-Anonymous scientific misconduct reporting for The Sainsbury Laboratory, within the NBI network. Node **24.11.0**, Express, MongoDB, a small browser form, private file storage, and a durable email queue.
+Anonymous scientific misconduct reporting for The Sainsbury Laboratory, within the NBI network. Node **24.22.3**, Express, MongoDB, a small browser form, private file storage, and a durable email queue.
 
 ## Run locally
 
@@ -25,7 +25,7 @@ For VPN-connected testing, use `npm run test:mail:vpn -- --check-only` to check 
 | `test` | SMTP delivery only to **deeks@nbi.ac.uk** |
 | `production` | Explicit `REPORT_RECIPIENTS`; help requests go to `WEBMASTER_EMAIL` |
 
-Recipient selection happens at the final mail boundary. Test/capture modes overwrite the SMTP envelope as well as headers, accept no alternative test recipient, and never CC/BCC production recipients. Production report emails have no implicit webmaster BCC. Subjects outside production begin `[TEST]`.
+Recipient selection happens at the final mail boundary. Test/capture modes overwrite the SMTP envelope as well as headers, accept no alternative test recipient, and never CC/BCC production recipients. Production reports BCC `WEBMASTER_EMAIL` by default (`REPORT_BCC_WEBMASTER=true`), as requested by George. The confirmed investigators are `nick.talbot@tsl.ac.uk` and `debbie.feather@tsl.ac.uk`; configure both explicitly. Subjects outside production begin `[TEST]`.
 
 The legacy `WEBMASTER_TESTING`, `WEBMASTER`, `EMAIL_RECIPIENTS`, LDAP, JWT and `API_URL` configuration is no longer used. Missing `MAIL_MODE` always means capture, even when legacy production settings are present. Production requires a HTTPS `PUBLIC_ORIGIN`, explicit `MONGODB_URI`, an absolute `DATA_DIR` outside the application directory, full recipient addresses, and ClamAV scanning. SMTP STARTTLS is required by default; do not disable it without confirming the NBI relay's requirements.
 
@@ -60,7 +60,7 @@ Rerun to refresh the static preview after new submissions. All previews/captures
 - Disallowed: executables, general archives, legacy Office formats, macro-enabled files, encrypted Office containers, and Office containers containing macros/embedded objects/ActiveX. Office expansion is limited to 50 MB and 1,000 entries. Nothing is extracted by the app.
 - Validate on the server, including content signatures rather than trusting browser MIME types. Type detection is not malware detection or a guarantee that a document is safe to open.
 - Scan each submission directory once with `clamscan`, bounded to 60 seconds. Malware, encryption/scan-limit alerts, missing scanner, missing signatures and scanner failures prevent acceptance of files. Production cannot disable scanning. Use `freshclam` to keep signatures current. See the [ClamAV scanning documentation](https://docs.clamav.net/manual/Usage/Scanning.html).
-- Stream uploads to private random filenames; enforce byte/count limits while receiving; limit concurrent uploads and check disk headroom. Files are not downloadable through a public route.
+- Stream uploads to private random filenames; enforce byte/count limits while receiving; limit concurrent uploads (one by default, to bound ClamAV RAM use) and check disk headroom. Files are not downloadable through a public route.
 - Store originals unchanged. Do not automatically strip document metadata: it may be evidence. The form explains the possibility of identifying metadata and infrastructure logs.
 
 The 15 MB raw limit produces roughly 21 MB of MIME email after encoding and headers. **Confirm the relay's message limit before production**, and lower `MAX_TOTAL_BYTES` if necessary. Keep nginx's body limit slightly above the application limit for multipart fields/headers. Defaults favour manageable attachments over a new recipient login/download service.
@@ -102,11 +102,11 @@ The regular suite retains deterministic subprocess stubs for clean/infected/erro
 2. Move approved files from `DATA_DIR/quarantine/<random-id>` to `DATA_DIR/reports/<reference>` on the same filesystem.
 3. Persist the report and pending notification in MongoDB's `submissions_v2` collection.
 4. Return HTTP **202**, `{ "status": "received", "formId": "..." }`. This means safely received and queued, **not** email delivery confirmed.
-5. The in-process worker atomically claims a notification, sends it, and records its state. Failed attempts use exponential backoff (30 seconds initially, capped at one hour) for 60 attempts by default, about two days, so a relay outage does not strand reports. Each failure records only an error code such as `ECONNECTION` or `EENVELOPE_550`. A five-minute lease recovers work after a crash.
+5. The in-process worker atomically claims a notification, sends it, and records its state. Failed attempts use exponential backoff (30 seconds initially, capped at one hour) for 60 attempts by default, about two days, so a relay outage does not strand reports. Each failure records only an error code such as `ECONNECTION` or `EENVELOPE_550`. After a crash, an expired five-minute sending lease becomes `DELIVERY_UNCERTAIN` for webmaster review; it is not automatically resent. A failed database completion write is retried without resending the message.
 
 Repeating the same key and content returns the same reference. Reusing a key for different content returns 409. The browser disables submission during processing and retains entered data on failure. Reloading the browser loses an unsent draft and its key, so retry from the same open page after uncertain failures.
 
-Mail delivery is **at least once**: a crash after SMTP acceptance but before recording success can cause a duplicate email. Stable Message-IDs help investigation but cannot guarantee recipient deduplication. Partial recipient acceptance stops automatic retries for operator review.
+Mail delivery cannot be guaranteed exactly once: a lost SMTP acknowledgement or an operator retry can still produce duplicates. A process crash after SMTP acceptance is routed to manual review. Stable Message-IDs help investigation but cannot guarantee recipient deduplication. Partial recipient acceptance stops automatic retries for operator review.
 
 Uploads and MongoDB writes cannot be one atomic transaction. Ambiguous database failures retain files until reconciliation can prove they are unreferenced. Startup/hourly cleanup deletes only abandoned `quarantine` upload directories older than 24 hours. It never deletes `reports` directories: one unknown to the database is logged as `storage_orphans_found`, because a wrong `MONGODB_URI` or an older backup makes real evidence look unreferenced. Check the database connection before removing anything by hand. Accepted evidence is never automatically expired. Set an institutional retention policy covering MongoDB, attachment storage, backups, and recipient mailboxes before introducing deletion.
 
@@ -117,20 +117,24 @@ The new collection leaves historical `forms` and old `uploads/` intact; it does 
 [OPERATIONS.md](OPERATIONS.md) covers intermittent 502 investigation, the `npm run monitor` probe/watch command, privacy-preserving request/process diagnostics, and optional PM2/nginx logging configuration. Deployment and starting persistent monitoring are separate steps. [FUTURE_IDEAS.md](FUTURE_IDEAS.md) records the deferred ZIP-bundling proposal.
 
 ```sh
-npm run notifications -- list
-npm run notifications -- retry <reference>
+npm run notifications -- --env-file /etc/scinteg.env list
+npm run notifications -- --env-file /etc/scinteg.env retry <reference>
 ```
 
 These commands use the current mode/database. List output includes only identifiers, states, attempt counts and timestamps, never report content. Review `failed` notifications and old `pending` notifications; resolve the cause before retrying, especially after partial/uncertain delivery. Integrate this check with the VM's existing monitoring. Log events `notification_delivery_failed`, `notification_worker_unavailable`, `storage_cleanup_failed` and `storage_orphans_found` also need attention.
 
-`/health/live` checks process liveness; `/health/ready` checks MongoDB connectivity; `/health/notifications` returns 503 when any notification has failed or is still unsent 30 minutes after submission (status only, no counts or references). Point the VM's monitoring at `/health/notifications`: it is the only automatic signal that investigators have not received a report. These endpoints do **not** certify scanner freshness or free disk capacity. Monitor those separately. The in-memory global request limit avoids retaining IP identifiers; nginx/network limits should be tuned for the site's shared users. The application should run as a single instance on this VM; multiple instances need coordinated upload/rate limits and cleanup.
+`/health/live` checks process liveness; `/health/ready` checks MongoDB connectivity; `/health/notifications` returns 503 when any notification has failed or is still unsent four hours after submission (status only, no counts or references). Point the VM's monitoring at `/health/notifications`: the app also sends persistent, throttled operational alerts to the webmaster. These endpoints do **not** certify scanner freshness or free disk capacity. Monitor those separately. The in-memory global request limit avoids retaining IP identifiers; nginx/network limits should be tuned for the site's shared users. The application should run as a single instance on this VM; multiple instances need coordinated upload/rate limits and cleanup.
 
 Back up MongoDB and `DATA_DIR/reports` together with restricted access, test restoration, and monitor free space. Run under an unprivileged dedicated user with private directories. No request body, filename, report text, credentials or client IP is intentionally logged by the app. Review nginx, system, SMTP, VPN and NBI logging separately; the app cannot promise network-level anonymity.
 
 ## VM upgrade
 
+Start with [VM_PRODUCTION_CHECKS.md](VM_PRODUCTION_CHECKS.md), the AlmaLinux 9 checklist for Warp/VM operators. [DATA_RETENTION_AND_RECOVERY.md](DATA_RETENTION_AND_RECOVERY.md) covers the implemented offline backup, historical evidence preservation and private email export/manual resolution. [CLAUDE_GREENLIGHT_PROMPT.md](CLAUDE_GREENLIGHT_PROMPT.md) contains the final focused review request.
+
+All VM commands must select the same environment as the service, for example `npm run test:scanner -- --env-file /etc/scinteg.env`. The shared launcher loads extra CA certificates before starting Node, rather than relying on a late-loaded environment setting.
+
 1. Back up the existing database, uploads, environment and service/proxy configuration. Record the old release for rollback. Do not use real reports for testing.
-2. Provision Node v24.11.0, a supported MongoDB installation (validated on 7.0.29), and ClamAV/current signatures. Check the VM's existing MongoDB version and persistent WiredTiger storage before replacing the old Mongoose client. The app requests majority, journaled writes (`w: 'majority', j: true`); confirm successful staging submissions and storage/restart behaviour on the VM. Journaling is always enabled in MongoDB 6.1+, including the tested 7.0; do not add the removed `storage.journal.enabled` setting. See [MongoDB's journaling changes](https://www.mongodb.com/docs/v7.0/release-notes/7.0/). Automated process restarts do not simulate a VM power failure or prove the durability of its disk/backups.
+2. Provision Node v24.22.3, a supported MongoDB installation (validated on 7.0.29), and ClamAV/current signatures. Check the VM's existing MongoDB version and persistent WiredTiger storage before replacing the old Mongoose client. The app requests majority, journaled writes (`w: 'majority', j: true`); confirm successful staging submissions and storage/restart behaviour on the VM. Journaling is always enabled in MongoDB 6.1+, including the tested 7.0; do not add the removed `storage.journal.enabled` setting. See [MongoDB's journaling changes](https://www.mongodb.com/docs/v7.0/release-notes/7.0/). Automated process restarts do not simulate a VM power failure or prove the durability of its disk/backups.
 3. Install this release in a new directory with `npm ci --omit=dev --ignore-scripts`. Create an absolute, private data directory outside the code/web root. Update environment variable names using `.env.example`; do not copy the old configuration unchanged.
 4. Start in **test** mode with a separate staging database/data directory. Set the correct HTTPS `PUBLIC_ORIGIN`, enable ClamAV, and verify `test:scanner`, `test:delivery`, the form, queue, attachments and service restart.
 5. Confirm the relay's size/TLS limits and intended production recipients. Configure `MAIL_MODE=production`, `UPLOAD_SCAN_MODE=clamav`, `REPORT_RECIPIENTS`, `WEBMASTER_EMAIL`, a production database and its data directory. Never mix staging records with live records.
@@ -146,6 +150,9 @@ npm ci --ignore-scripts
 npx playwright install chromium
 npm run test:all
 npm run test:coverage
+npm run test:scanner:dev
+# With MongoDB Database Tools installed; isolated synthetic backup/restore:
+npm run test:backup
 ```
 
 Install `mongod` locally or set `MONGOD_BINARY`. Each integration/browser test server starts its **own MongoDB process on an ephemeral port with temporary data**, then removes it. Tests do not load `.env` or connect to the production database. SMTP integration uses an in-process local sink with no forwarding; browser tests use local mail capture. All records and attachments are synthetic.

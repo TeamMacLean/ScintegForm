@@ -10,7 +10,6 @@ import { requestDiagnostics } from './observability.js';
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 // A notification still unsent this long after submission needs an operator to look.
-const NOTIFICATION_OVERDUE_MS = 30 * 60_000;
 function description(value) {
   // Browsers send textarea line breaks as CRLF; without this each one counts twice
   // against the limit the form's maxlength already enforced.
@@ -26,7 +25,7 @@ async function syncDirectory(directory) {
   try { await handle.sync(); } finally { await handle.close(); }
 }
 
-export async function createApp({ config, db, scanner, diskStats = statfs, logger = console }) {
+export async function createApp({ config, db, scanner, diskStats = statfs, logger = console, onIssue = () => {} }) {
   await prepareStorage(config);
   const app = express();
   app.disable('x-powered-by');
@@ -43,7 +42,7 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
   app.get('/health/notifications', async (req, res) => {
     let status = 'unavailable';
     try {
-      if (db.healthy()) status = await db.notificationsNeedAttention(new Date(Date.now() - NOTIFICATION_OVERDUE_MS)) ? 'attention' : 'ok';
+      if (db.healthy()) status = await db.notificationsNeedAttention(new Date(Date.now() - config.notificationOverdueMs)) ? 'attention' : 'ok';
     } catch { /* reported as unavailable */ }
     res.status(status === 'ok' ? 200 : 503).json({ status });
   });
@@ -73,9 +72,18 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
 
   async function accept(kind, req, input, uploadDir) {
     const fingerprint = req.contentFingerprint || sha256(JSON.stringify(input));
+    const matches = record => {
+      if (record.fingerprint === fingerprint) return true;
+      // Releases before CRLF normalization stored a different digest for the same text.
+      const files = (record.files || []).map(({ storageName, ...file }) => file);
+      const canonical = kind === 'help'
+        ? { subject: record.subject, description: description(record.description), files }
+        : { description: description(record.description), files };
+      return sha256(JSON.stringify(canonical)) === fingerprint;
+    };
     const existing = await db.find(kind, req.keyHash);
     if (existing) {
-      if (existing.fingerprint !== fingerprint) throw new HttpError(409, 'This submission was already received with different content. Reload to start a new report.');
+      if (!matches(existing)) throw new HttpError(409, 'This submission was already received with different content. Reload to start a new report.');
       return existing;
     }
     const id = db.newId();
@@ -95,7 +103,7 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
       if (error.code === 11000) {
         if (moved) await rm(target, { recursive: true, force: true });
         const winner = await db.find(kind, req.keyHash);
-        if (winner?.fingerprint === fingerprint) return winner;
+        if (winner && matches(winner)) return winner;
         throw new HttpError(409, 'This submission key was already used with different content.');
       }
       throw error;
@@ -113,6 +121,7 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
     req.uploadAbort = new AbortController();
     const abort = () => req.uploadAbort.abort();
     req.once('aborted', abort);
+    let record;
     try {
       req.diagnosticStage = 'disk_capacity';
       const disk = await diskStats(config.dataDir);
@@ -133,16 +142,16 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
       // Pass the stable digest explicitly while preserving generated attachment names.
       req.contentFingerprint = stable;
       req.diagnosticStage = 'saving_report';
-      const record = await accept('report', req, input, req.uploadDir);
-      res.status(202).json(receipt(record));
+      record = await accept('report', req, input, req.uploadDir);
     } finally {
       req.off('aborted', abort);
       try { await rm(req.uploadDir, { recursive: true, force: true }); }
       finally { active--; }
     }
+    res.status(202).json(receipt(record));
   });
 
-  app.post('/api/help', express.json({ limit: '100kb', strict: true }), async (req, res) => {
+  app.post('/api/help', express.json({ limit: '100kb', strict: true, inflate: false }), async (req, res) => {
     if (!req.is('application/json')) throw new HttpError(415, 'Send the help request as JSON.');
     if (!req.body || Object.keys(req.body).some(key => !['subject', 'message'].includes(key))) throw new HttpError(400, 'Unexpected help fields.');
     if (typeof req.body.subject !== 'string' || !req.body.subject.trim() || req.body.subject.length > 200 || /[\r\n\x00]/.test(req.body.subject)) throw new HttpError(400, 'Enter a subject between 1 and 200 characters on one line.');
@@ -157,13 +166,17 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
     if (res.headersSent) return next(error);
     let status = error.status || 500;
     let message = status < 500 ? error.message : 'The report could not be confirmed. Keep this page open and retry with the same contents.';
-    if (error.code?.startsWith('LIMIT_')) {
+    if (typeof error.code === 'string' && error.code.startsWith('LIMIT_')) {
       status = ['LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_PART_COUNT'].includes(error.code) ? 413 : 400;
       message = 'The upload exceeds a file, count, or form-field limit. Check the limits shown on the form.';
     } else if (error.type === 'entity.parse.failed') { status = 400; message = 'Invalid request body.'; }
     else if (error.type === 'entity.too.large') { status = 413; message = 'The request is too large.'; }
     else if (error instanceof HttpError) message = error.message;
     else if (error.message === 'Unexpected end of form') { status = 400; message = 'The upload was incomplete. Please try again.'; }
+    if (req.method === 'POST' && (status >= 500 || status === 422)) {
+      try { Promise.resolve(onIssue(status === 422 ? 'SAFETY_SCAN_REJECTED' : 'SUBMISSION_FAILED', res.get('X-Request-ID'))).catch(() => logger.error('operator_alert_record_failed')); }
+      catch { logger.error('operator_alert_record_failed'); }
+    }
     res.status(status).json({ error: message });
   });
   return app;

@@ -66,3 +66,22 @@ test('partial SMTP acceptance is surfaced for operator review', async t => {
   t.after(() => mailer.close());
   await assert.rejects(mailer.send({ _id: '0123456789abcdef01234567', kind: 'report', description: 'Synthetic partial acceptance test', files: [] }), { code: 'PARTIAL_DELIVERY' });
 });
+
+test('production reports BCC the webmaster; help and operational alerts go only to the webmaster', async t => {
+  const received = [];
+  const server = new SMTPServer({ authOptional: true, disabledCommands: ['STARTTLS'], logger: false,
+    onData(stream, session, done) { const chunks = []; stream.on('data', chunk => chunks.push(chunk)); stream.on('end', () => { received.push({ to: session.envelope.rcptTo.map(r => r.address), raw: Buffer.concat(chunks) }); done(); }); },
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const mailer = createMailer(loadConfig({ MAIL_MODE: 'production', PUBLIC_ORIGIN: 'https://review.invalid', MONGODB_URI: 'mongodb://127.0.0.1/test', DATA_DIR: path.join(os.tmpdir(), 'scinteg-mail-fixture'), SMTP_HOST: '127.0.0.1', SMTP_PORT: String(server.server.address().port), SMTP_REQUIRE_TLS: 'false', REPORT_RECIPIENTS: 'nick@example.invalid,debbie@example.invalid', WEBMASTER_EMAIL: 'deeks@nbi.ac.uk' }));
+  t.after(() => mailer.close());
+  for (const kind of ['report', 'help']) await mailer.send({ _id: '0123456789abcdef01234567', kind, subject: 'Synthetic', description: 'Synthetic', files: [] });
+  assert.deepEqual(received[0].to, ['nick@example.invalid', 'debbie@example.invalid', 'deeks@nbi.ac.uk']);
+  const message = await simpleParser(received[0].raw);
+  assert.doesNotMatch(message.to.text, /deeks/); assert.equal(message.bcc, undefined);
+  assert.deepEqual(received[1].to, ['deeks@nbi.ac.uk']);
+  await mailer.sendAlert({ id: 'synthetic-alert', issues: [{ code: 'NOTIFICATION_FAILED', references: ['0123456789abcdef01234567'], count: 1, description: 'must not appear' }] });
+  assert.deepEqual(received[2].to, ['deeks@nbi.ac.uk']);
+  assert.doesNotMatch(received[2].raw.toString(), /must not appear/);
+});

@@ -22,4 +22,8 @@ For genuinely large evidence sets, restricted downloads may be more useful than 
 
 The repository now provides a probe and diagnostic logging; production activation is separate. A monitor on another NBI/VPN-connected machine can detect loss of the whole VM. A probe running on the application VM can compare nginx with Node and MongoDB readiness, but cannot report while its own VM is down.
 
-Potential later additions: a private uptime dashboard, alerts after consecutive failures and on recovery, and a maintenance-window feature. Monitor synthetic health endpoints only. Do not submit fake misconduct reports on a timer or expose the internal site publicly to make an external monitor reach it. Agree alert recipients and retention before enabling notifications.
+Potential later additions: a private uptime dashboard, alerts after consecutive failures and on recovery, and a maintenance-window feature. Monitor synthetic health endpoints only. Do not submit fake misconduct reports on a timer or expose the internal site publicly to make an external monitor reach it. Webmaster alerts to George and a same-VM systemd timer are now implemented; activate them using `VM_PRODUCTION_CHECKS.md`. Off-VM monitoring remains an infrastructure follow-up.
+
+## Remove the webmaster report BCC later
+
+George has explicitly retained `deeks@nbi.ac.uk` as a BCC on production reports for now. Once operational recovery is established and the institution agrees, set `REPORT_BCC_WEBMASTER=false`. Help and operational alerts still go to the webmaster. This is a future owner decision, not part of this release.

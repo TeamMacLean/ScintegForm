@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Scinteg every minute independently of the app
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=scinteg-monitor.service
+
+[Install]
+WantedBy=timers.target

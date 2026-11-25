@@ -1,5 +1,5 @@
 import { createWriteStream, createReadStream } from 'node:fs';
-import { mkdir, rm, readFile, chmod, readdir, stat } from 'node:fs/promises';
+import { mkdir, rm, readFile, chmod, readdir, stat, lstat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { randomUUID, createHash } from 'node:crypto';
@@ -26,6 +26,7 @@ export class HttpError extends Error {
 export async function prepareStorage(config) {
   for (const dir of [config.dataDir, path.join(config.dataDir, 'quarantine'), path.join(config.dataDir, 'reports')]) {
     await mkdir(dir, { recursive: true, mode: 0o700 });
+    if ((await lstat(dir)).isSymbolicLink()) throw new Error('Storage directories must not be symlinks');
     await chmod(dir, 0o700);
   }
 }
@@ -69,7 +70,7 @@ export async function scanFile(filePath, config) {
     // not hold an upload slot indefinitely after its time/output limit is hit.
     await run(config.scanCommand, [...database, '--recursive', '--no-summary', '--infected', '--alert-encrypted=yes', '--alert-exceeds-max=yes', '--max-scansize=60M', '--max-recursion=10', '--max-files=1000', '--', filePath], { timeout: 60_000, maxBuffer: 64_000, killSignal: 'SIGKILL' });
   } catch (error) {
-    if (error.code === 1) throw new HttpError(422, 'A file failed the safety scan. Remove it and try again.');
+    if (error.code === 1) throw new HttpError(422, 'A file could not pass the safety scan. Password-protected or encrypted files cannot be checked; remove their password and try again. Unsafe files or files exceeding scan limits are also blocked.');
     throw new HttpError(503, 'File safety scanning is temporarily unavailable. Please try again later.');
   }
 }
@@ -154,6 +155,6 @@ export async function cleanupAbandoned(config, db, now = Date.now(), logger = co
     if (now - (await stat(path.join(reports, entry.name))).mtimeMs < 86400_000) continue;
     if (!await db.exists(entry.name)) orphans.push(entry.name);
   }
-  if (orphans.length) logEvent(logger, 'warn', 'storage_orphans_found', { count: orphans.length, references: orphans });
+  if (orphans.length) logEvent(logger, 'warn', 'storage_orphans_found', { count: orphans.length, references: orphans.slice(0, 20) });
   return orphans;
 }

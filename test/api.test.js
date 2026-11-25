@@ -17,7 +17,7 @@ import { HttpError, cleanupAbandoned } from '../server/uploads.js';
 
 test('report acceptance, delivery and retries use isolated storage and real MongoDB', async t => {
   const mongo = await temporaryMongo();
-  const config = loadConfig({ DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, MIN_FREE_BYTES: '0', MAX_REQUESTS_PER_MINUTE: '1000' });
+  const config = loadConfig({ DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, MIN_FREE_BYTES: '0', MAX_REQUESTS_PER_MINUTE: '1000', MAX_CONCURRENT_UPLOADS: '4' });
   const db = await connectDatabase(config);
   const mailer = createMailer(config);
   const app = await createApp({ config, db });
@@ -285,12 +285,16 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
     release(); await pending;
   });
 
-  await t.test('a lost worker lease can be reclaimed after restart', async () => {
+  await t.test('a lost worker lease requires operator review before an explicit retry', async () => {
     const response = await post().field('description', 'Recover crashed worker');
     const clock = new Date(Date.now() + 1000);
     const abandonedClaim = await db.claim(clock);
     assert.equal(String(abandonedClaim._id), response.body.formId);
     const recovered = createWorker({ config, db, mailer, now: () => new Date(clock.getTime() + 301_000) });
+    assert.equal(await recovered.tick(), false);
+    assert.equal((await db.getNotification(response.body.formId)).notification.lastError, 'DELIVERY_UNCERTAIN');
+    assert.ok(!(await readdir(config.captureDir)).includes(`${response.body.formId}.eml`));
+    await db.retry(response.body.formId);
     assert.equal(await recovered.tick(), true);
     assert.ok((await readdir(config.captureDir)).includes(`${response.body.formId}.eml`));
   });

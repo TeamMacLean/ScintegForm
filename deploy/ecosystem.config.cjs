@@ -6,9 +6,9 @@ module.exports = {
   apps: [{
     name: 'scinteg',
     cwd: root,
-    script: 'server/index.js',
+    script: 'scripts/run.js',
+    args: ['start', '--env-file', process.env.SCINTEG_ENV_FILE || '/etc/scinteg.env'],
     interpreter: process.env.SCINTEG_NODE_BIN || process.execPath,
-    node_args: [`--env-file=${process.env.SCINTEG_ENV_FILE || '/etc/scinteg.env'}`],
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,

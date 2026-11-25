@@ -1,6 +1,9 @@
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { loadConfig } from '../server/config.js';
+import { createMailer } from '../server/mail.js';
+import { createOperatorAlerts } from '../server/alerts.js';
 
 function origin(value) {
   let url;
@@ -52,19 +55,28 @@ export async function checkHealth({ publicOrigin, localOrigin = null, timeoutMs 
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  if (process.argv.slice(2).some(arg => arg !== '--watch')) throw new Error('Usage: npm run monitor [-- --watch]');
+  if (process.argv.slice(2).some(arg => !['--watch', '--alert'].includes(arg))) throw new Error('Usage: npm run monitor [-- --watch --alert]');
   const publicOrigin = process.env.MONITOR_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN;
   if (!publicOrigin) throw new Error('Set MONITOR_PUBLIC_ORIGIN to the public site origin.');
   const localOrigin = process.env.MONITOR_LOCAL_ORIGIN === 'off' ? null : process.env.MONITOR_LOCAL_ORIGIN || 'http://127.0.0.1:3000';
   const interval = Number(process.env.MONITOR_INTERVAL_MS || 60000);
   if (!Number.isSafeInteger(interval) || interval < 10000 || interval > 3600000) throw new Error('MONITOR_INTERVAL_MS must be between 10000 and 3600000.');
   const watch = process.argv.includes('--watch');
+  const mailer = process.argv.includes('--alert') ? createMailer(loadConfig()) : null;
+  const alerts = mailer ? await createOperatorAlerts({ config: loadConfig(), mailer, channel: 'monitor' }) : null;
   const controller = new AbortController();
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => controller.abort());
   do {
     const sample = await checkHealth({ publicOrigin, localOrigin });
     console.info(JSON.stringify(sample));
+    if (alerts) {
+      try {
+        if (!sample.ok) await alerts.notify(sample.assessment === 'notifications_need_attention' ? 'NOTIFICATIONS_NEED_ATTENTION' : 'APP_UNAVAILABLE');
+        await alerts.flush();
+      } catch { console.error('operator_alert_delivery_failed'); }
+    }
     if (!watch) { process.exitCode = sample.ok ? 0 : 1; break; }
     await delay(interval, undefined, { signal: controller.signal }).catch(() => {});
   } while (!controller.signal.aborted);
+  mailer?.close();
 }

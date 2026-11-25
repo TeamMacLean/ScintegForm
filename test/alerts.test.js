@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { loadConfig } from '../server/config.js';
+import { createMailer } from '../server/mail.js';
+import { createOperatorAlerts } from '../server/alerts.js';
+
+test('operator alerts survive relay failure and restart, coalesce incidents, and throttle reminders', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'scinteg-alerts-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const config = loadConfig({ DATA_DIR: dir });
+  let clock = Date.now();
+  const failed = await createOperatorAlerts({ config, now: () => clock, mailer: { sendAlert: async () => { throw new Error('private relay error'); } } });
+  await failed.notify('NOTIFICATION_FAILED', '0123456789abcdef01234567');
+  await assert.rejects(failed.flush());
+  const mailer = createMailer(config);
+  t.after(() => mailer.close());
+  const recovered = await createOperatorAlerts({ config, now: () => clock, mailer });
+  assert.equal(await recovered.flush(), true);
+  const [file] = await readdir(config.captureDir);
+  const raw = await readFile(path.join(config.captureDir, file), 'utf8');
+  assert.match(raw, /deeks@nbi.ac.uk/); assert.match(raw, /NOTIFICATION_FAILED/); assert.doesNotMatch(raw, /private relay error/);
+  await recovered.notify('NOTIFICATION_FAILED', '0123456789abcdef01234567');
+  assert.equal(await recovered.flush(), false);
+  clock += 4 * 3600_000;
+  assert.equal(await recovered.flush(), true);
+  assert.equal((await readdir(config.captureDir)).length, 2);
+  await assert.rejects(recovered.notify('private arbitrary text'), /Unknown operational issue/);
+});

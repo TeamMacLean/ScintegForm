@@ -33,16 +33,15 @@ export async function connectDatabase(config) {
     exists: id => Record.exists({ _id: id }),
     save: input => Record.create({ ...input, mode: config.mailMode, notification: { state: 'pending', attempts: 0, nextAttemptAt: new Date() } }),
     async claim(now = new Date()) {
-      // A crash on the last permitted attempt must become visible as a failure.
-      await Record.updateMany({ mode: config.mailMode, 'notification.state': 'sending', 'notification.leaseUntil': { $lte: now }, 'notification.attempts': { $gte: config.maxMailAttempts } }, {
+      // After a crash we cannot know whether SMTP accepted the message. George
+      // investigates instead of automatically duplicating an uncertain delivery.
+      await Record.updateMany({ mode: config.mailMode, 'notification.state': 'sending', 'notification.leaseUntil': { $lte: now } }, {
         $set: { 'notification.state': 'failed', 'notification.lastError': 'DELIVERY_UNCERTAIN' },
+        $unset: { 'notification.leaseUntil': '', 'notification.leaseToken': '' },
       });
       return Record.findOneAndUpdate({
         mode: config.mailMode, 'notification.attempts': { $lt: config.maxMailAttempts },
-        $or: [
-          { 'notification.state': 'pending', 'notification.nextAttemptAt': { $lte: now } },
-          { 'notification.state': 'sending', 'notification.leaseUntil': { $lte: now } },
-        ],
+        'notification.state': 'pending', 'notification.nextAttemptAt': { $lte: now },
       }, {
         $set: { 'notification.state': 'sending', 'notification.leaseUntil': new Date(now.getTime() + 300_000), 'notification.leaseToken': randomUUID() },
         $inc: { 'notification.attempts': 1 },
@@ -57,9 +56,17 @@ export async function connectDatabase(config) {
       { 'notification.state': 'failed' },
       { 'notification.state': { $in: ['pending', 'sending'] }, createdAt: { $lte: overdueBefore } },
     ] }).then(Boolean),
+    attentionNotifications: overdueBefore => Record.find({ mode: config.mailMode, $or: [
+      { 'notification.state': 'failed' },
+      { 'notification.state': { $in: ['pending', 'sending'] }, createdAt: { $lte: overdueBefore } },
+    ] }, { _id: 1 }).limit(20).lean(),
+    getNotification: id => Record.findOne({ _id: id, mode: config.mailMode }).lean(),
     listNotifications: () => Record.find({ mode: config.mailMode, 'notification.state': { $ne: 'sent' } }, { _id: 1, kind: 1, createdAt: 1, notification: 1 }).lean(),
     retry: id => Record.updateOne({ _id: id, mode: config.mailMode, 'notification.state': 'failed' }, {
       $set: { 'notification.state': 'pending', 'notification.attempts': 0, 'notification.nextAttemptAt': new Date() },
+    }),
+    resolve: id => Record.updateOne({ _id: id, mode: config.mailMode, 'notification.state': 'failed' }, {
+      $set: { 'notification.state': 'sent', 'notification.sentAt': new Date(), 'notification.lastError': 'MANUALLY_RESOLVED' },
     }),
   };
 }

@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-if (process.versions.node !== '24.11.0') throw new Error('Use Node v24.11.0 (nvm use).');
+if (process.versions.node !== '24.22.3') throw new Error('Use Node v24.22.3 (nvm use).');
 for (const dir of ['server', 'public', 'scripts', 'test', 'e2e', 'deploy']) {
   for (const name of await readdir(dir)) {
     if (/\.(?:js|cjs)$/.test(name)) execFileSync(process.execPath, ['--check', `${dir}/${name}`], { stdio: 'inherit' });

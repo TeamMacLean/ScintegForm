@@ -7,7 +7,8 @@ Type=simple
 User=scinteg
 Group=scinteg
 WorkingDirectory=/opt/scinteg/app
-ExecStart=/opt/scinteg/node-v24.11.0-linux-x64/bin/node --env-file=/etc/scinteg.env server/index.js
+ExecStart=/opt/scinteg/node-v24.22.3-linux-x64/bin/node scripts/run.js start --env-file /etc/scinteg.env
+Environment=NODE_ENV=production
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=210

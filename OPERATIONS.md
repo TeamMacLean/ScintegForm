@@ -4,7 +4,7 @@
 
 VPN access can provide internal DNS and a route to the relay. The relay must also allow the VPN client's address, sender and authentication/TLS configuration. A VPN connection alone does not establish permission to relay mail.
 
-Use Node 24.11.0, install dependencies, and configure SMTP settings in `.env` (see `.env.example`). Then, with the VPN connected:
+Use Node 24.22.3, install dependencies, and configure SMTP settings in `.env` (see `.env.example`). Then, with the VPN connected:
 
 ```sh
 # DNS and SMTP/TLS/authentication only; sends no email.
@@ -19,6 +19,8 @@ The default relay is the historical `mail.nbi.ac.uk`; override `SMTP_HOST`/`SMTP
 Output identifies the failed stage: configuration, DNS, SMTP or delivery. `ENOTFOUND`/`EAI_AGAIN` suggests DNS/VPN configuration; connection refusal/timeout suggests routing/firewall/listener access; TLS/authentication failures need relay configuration checked. SMTP verification does not prove sender/recipient relay permission; the synthetic send checks relay acceptance, and the inbox must still be checked for final delivery. See [Nodemailer's verification semantics](https://nodemailer.com/smtp).
 
 For manual browser testing over VPN, `MAIL_MODE=test` in the app's **development** `.env` sends all report/help notifications only to George. Keep a separate development database/data directory and use synthetic data. Switching modes never promotes existing captured reports into live mail.
+
+On the VM, append `-- --env-file /etc/scinteg.env` to npm maintenance commands (and put other flags after that). Use the actual service environment path. Inherited environment values override file values. The shared launcher loads `NODE_EXTRA_CA_CERTS` before child Node startup.
 
 ## What a 502 tells us
 
@@ -65,10 +67,10 @@ curl --max-time 5 -i http://127.0.0.1:3000/health/notifications
 sudo tail -n 100 /var/log/nginx/scinteg-upstream.jsonl
 
 # From this project's directory on the VM; Ctrl-C stops the watcher.
-MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor -- --watch
+MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor -- --env-file /etc/scinteg.env --watch
 ```
 
-Liveness 200 with readiness 503 points to MongoDB connectivity. Compare the diagnostic log's timestamps and request IDs with the app logs. The watcher produces a timeline only while it is running; it does not send alerts. Keep logs restricted and redact any client IPs, URLs or report details from old application/nginx logs before sharing them. Record whether a failure happened on a page view or upload, without including the uploaded material.
+Liveness 200 with readiness 503 points to MongoDB connectivity. Compare the diagnostic log's timestamps and request IDs with the app logs. The watcher produces a timeline only while it is running; it sends alerts only when `--alert` is supplied. Keep logs restricted and redact any client IPs, URLs or report details from old application/nginx logs before sharing them. Record whether a failure happened on a page view or upload, without including the uploaded material.
 
 ## Diagnostic layers now available
 
@@ -77,7 +79,7 @@ Liveness 200 with readiness 503 points to MongoDB connectivity. Compare the diag
 | Public HTTP probe | Status and elapsed time through nginx/TLS/network | A 200 home page does not prove uploads, mail or scanning work |
 | Local `/health/live` | Node can answer HTTP | Does not check dependencies |
 | Local `/health/ready` | Mongoose connection is ready | Not a complete database transaction or SMTP/AV check |
-| `/health/notifications` | No notification has failed or stayed unsent for 30 minutes | Status only; use `npm run notifications -- list` for details |
+| `/health/notifications` | No notification has failed or stayed unsent for four hours | Status only; use `npm run notifications -- --env-file /etc/scinteg.env list` for details |
 | App failure/slow-request logs | Server-generated request ID, fixed route label, status, duration, processing stage | Requests nginx cannot forward never reach this layer |
 | Runtime samples | PID, uptime, RSS/heap memory, event-loop p99 delay, database connection state | Node RSS excludes ClamAV and MongoDB subprocesses |
 | PM2 | Restarts, process state, startup/shutdown, stdout/stderr | A restart is evidence, not a diagnosis |
@@ -90,16 +92,16 @@ Application request logs omit client IPs, raw URLs/queries, headers, report cont
 Run on the VM to compare the public proxy with the local Node listener:
 
 ```sh
-MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor
-MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor -- --watch
+MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor -- --env-file /etc/scinteg.env
+MONITOR_PUBLIC_ORIGIN=https://YOUR-SCINTEG-HOST npm run monitor -- --env-file /etc/scinteg.env --watch
 ```
 
-The one-shot command exits 0 only when all configured probes pass, otherwise 1. Watch mode writes a JSON sample every minute, with bounded timeouts and no overlapping checks. `MONITOR_LOCAL_ORIGIN` defaults to `http://127.0.0.1:3000`. Set it to `off` when monitoring only the public site from a different NBI/VPN machine. Set `MONITOR_INTERVAL_MS` to change the interval (minimum 10 seconds). No emails, webhooks or other alerts are sent by this probe.
+The one-shot command exits 0 only when all configured probes pass, otherwise 1. Watch mode writes a JSON sample every minute, with bounded timeouts and no overlapping checks. `MONITOR_LOCAL_ORIGIN` defaults to `http://127.0.0.1:3000`. Set it to `off` when monitoring only the public site from a different NBI/VPN machine. Set `MONITOR_INTERVAL_MS` to change the interval (minimum 10 seconds). The default probe sends no email. Add `--alert` to persist/coalesce failures and email the webmaster; `deploy/scinteg-monitor.service.example` and `.timer.example` run it independently of the app every minute. First failures alert promptly, repeated categories at most every four hours. SMTP outages delay those emails. See `VM_PRODUCTION_CHECKS.md` for activation.
 
 Assessments are hints, not root-cause verdicts:
 
 - `public_path_failure`: public site failed while local checks passed (or no local checks were configured). Investigate nginx, TLS, DNS, network routing and upstream configuration.
-- `notifications_need_attention`: the site works but a report or help email has failed or is overdue. Run `npm run notifications -- list` and check `lastError`.
+- `notifications_need_attention`: the site works but a report or help email has failed or is overdue. Run `npm run notifications -- --env-file /etc/scinteg.env list` and check `lastError`.
 - `app_unreachable_or_unresponsive`: local Node liveness failed. Compare PM2 restarts and system resource evidence at that time.
 - `app_not_ready`: Node responds but its readiness check fails. Investigate MongoDB connectivity and load.
 - `healthy`: all configured probes passed at that instant; intermittent failures may occur between samples.
@@ -110,7 +112,7 @@ A separate NBI-connected monitor can detect an entire VM outage. A monitor on th
 
 `deploy/ecosystem.config.cjs` is an optional PM2 configuration for this release. Use **either** PM2 or the systemd app service, not both for the same port. It uses one forked instance, a bounded restart policy, readiness signalling and a 210-second shutdown allowance. It intentionally has no automatic memory-threshold restart until a threshold is chosen using observed VM/application usage.
 
-Before starting it, set `SCINTEG_NODE_BIN` to the absolute Node 24.11.0 executable and `SCINTEG_ENV_FILE` to the intended environment file. These are deployment settings; the file defaults to `/etc/scinteg.env`. Create the log directory for the service account. Example commands to adapt on the VM:
+Before starting it, set `SCINTEG_NODE_BIN` to the absolute Node 24.22.3 executable and `SCINTEG_ENV_FILE` to the intended environment file. These are deployment settings; the file defaults to `/etc/scinteg.env`. Create the log directory for the service account. Example commands to adapt on the VM:
 
 ```sh
 mkdir -p var/logs

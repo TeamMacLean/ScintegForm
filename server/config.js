@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const TEST_EMAIL = 'deeks@nbi.ac.uk';
@@ -16,6 +17,17 @@ function inside(parent, child) {
   const relative = path.relative(parent, child);
   return !relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
 }
+export function canonicalPath(value) {
+  let current = path.resolve(value);
+  const missing = [];
+  while (true) {
+    try { return path.join(realpathSync(current), ...missing); }
+    catch (error) {
+      if (error.code !== 'ENOENT' || path.dirname(current) === current) throw new Error('Cannot resolve storage path');
+      missing.unshift(path.basename(current)); current = path.dirname(current);
+    }
+  }
+}
 
 export function loadConfig(env = process.env) {
   const mailMode = env.MAIL_MODE || 'capture';
@@ -26,7 +38,9 @@ export function loadConfig(env = process.env) {
   if (production && (!env.PUBLIC_ORIGIN || !env.MONGODB_URI)) {
     throw new Error('PUBLIC_ORIGIN and MONGODB_URI are required for production');
   }
-  const origin = new URL(env.PUBLIC_ORIGIN || `http://localhost:${port}`).origin;
+  let origin;
+  try { origin = new URL(env.PUBLIC_ORIGIN || `http://localhost:${port}`).origin; }
+  catch { throw new Error('Invalid PUBLIC_ORIGIN'); }
   if (production && !origin.startsWith('https://')) throw new Error('Production PUBLIC_ORIGIN must use HTTPS');
   const scanMode = env.UPLOAD_SCAN_MODE || (mailMode === 'capture' ? 'disabled' : 'clamav');
   if (!['disabled', 'clamav'].includes(scanMode) || (production && scanMode !== 'clamav')) {
@@ -35,10 +49,10 @@ export function loadConfig(env = process.env) {
   const recipients = production
     ? [...new Set((env.REPORT_RECIPIENTS || '').split(',').map(s => email(s.trim(), 'REPORT_RECIPIENTS address')))]
     : [TEST_EMAIL];
-  const webmaster = production ? email(env.WEBMASTER_EMAIL, 'WEBMASTER_EMAIL') : TEST_EMAIL;
+  const webmaster = production ? email(env.WEBMASTER_EMAIL || TEST_EMAIL, 'WEBMASTER_EMAIL') : TEST_EMAIL;
   const smtpHost = env.SMTP_HOST || '';
   if (mailMode !== 'capture' && !smtpHost) throw new Error('SMTP_HOST is required for delivery');
-  const dataDir = path.resolve(env.DATA_DIR || `var/${mailMode}`);
+  const dataDir = canonicalPath(env.DATA_DIR || `var/${mailMode}`);
   if (inside(fileURLToPath(new URL('../public/', import.meta.url)), dataDir)) {
     throw new Error('DATA_DIR must be outside the public web directory');
   }
@@ -51,12 +65,15 @@ export function loadConfig(env = process.env) {
   const maxFileBytes = integer(env, 'MAX_FILE_BYTES', Math.min(10_000_000, maxTotalBytes), 1, maxTotalBytes);
   return Object.freeze({
     mailMode, recipients, webmaster, origin, port,
+    reportBccWebmaster: env.REPORT_BCC_WEBMASTER !== 'false',
+    notificationOverdueMs: integer(env, 'NOTIFICATION_OVERDUE_MINUTES', 240, 1, 10080) * 60_000,
+    alertRepeatMs: integer(env, 'ALERT_REPEAT_MINUTES', 240, 1, 10080) * 60_000,
     host: env.HOST || '127.0.0.1',
     mongoUri: env.MONGODB_URI || 'mongodb://127.0.0.1:27017/scintegform_dev',
     dataDir, captureDir: path.join(dataDir, 'mail'),
     maxTotalBytes, maxFileBytes,
     maxFiles: integer(env, 'MAX_FILES', 10, 1, 25),
-    maxConcurrentUploads: integer(env, 'MAX_CONCURRENT_UPLOADS', 4, 1, 16),
+    maxConcurrentUploads: integer(env, 'MAX_CONCURRENT_UPLOADS', 1, 1, 16),
     maxRequestsPerMinute: integer(env, 'MAX_REQUESTS_PER_MINUTE', 30, 1, 1000),
     minFreeBytes: integer(env, 'MIN_FREE_BYTES', 500_000_000, 0, Number.MAX_SAFE_INTEGER),
     scanMode, scanCommand: env.CLAMSCAN_COMMAND || 'clamscan',
