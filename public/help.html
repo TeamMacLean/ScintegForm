@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer"><title>Request help · Scinteg</title>
+  <link rel="stylesheet" href="/style.css"><script src="/form.js" defer></script>
+</head>
+<body>
+  <header><nav aria-label="Main navigation"><a class="brand" href="/">Scinteg</a><a href="/">Back to report form</a></nav></header>
+  <main>
+    <p class="eyebrow">Technical support</p><h1>Request help</h1>
+    <p class="intro">Send an anonymous technical query to the webmaster. Include your report reference if you have one.</p>
+    <aside class="notice">Please avoid including sensitive report details here. This message goes to technical support, rather than the investigators. To receive a reply, you would need to include contact details; doing so identifies you.</aside>
+    <p id="testing" class="notice" hidden>Test mode: notifications are captured locally or sent only to deeks@nbi.ac.uk.</p>
+    <noscript><p class="error">JavaScript is needed to submit this form.</p></noscript>
+    <div id="error" class="error" role="alert" tabindex="-1" hidden></div>
+    <section id="success" class="notice success" tabindex="-1" hidden><h2>Help request received</h2><p>Your message is stored and notification has been queued for the webmaster.</p><p>Your reference: <strong id="reference"></strong></p><a href="/">Back to report form</a></section>
+    <form id="help-form" autocomplete="off">
+      <label for="subject">Subject <span>(required)</span></label><input id="subject" name="subject" required maxlength="200" type="text">
+      <label for="message">Message <span>(required)</span></label><textarea id="message" name="message" required maxlength="20000" rows="8"></textarea>
+      <p id="progress-label" role="status" aria-live="polite"></p>
+      <button id="submit" type="submit" disabled>Send help request</button>
+    </form>
+  </main>
+  <footer>Scinteg · Confidential reporting within the NBI network</footer>
+</body>
+</html>

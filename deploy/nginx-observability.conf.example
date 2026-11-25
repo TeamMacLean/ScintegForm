@@ -1,0 +1,13 @@
+# Include in nginx's http {} context, before the Scinteg server/location block.
+# No client IP, raw URI, query, user agent, referrer, cookies or body.
+log_format scinteg_upstream escape=json
+    '{"time":"$time_iso8601","event":"proxy_failure",'
+    '"request_id":"$request_id","app_request_id":"$upstream_http_x_request_id",'
+    '"status":$status,"upstream_status":"$upstream_status",'
+    '"request_seconds":$request_time,"connect_seconds":"$upstream_connect_time",'
+    '"header_seconds":"$upstream_header_time","upstream_seconds":"$upstream_response_time"}';
+
+map $status $scinteg_log_failure {
+    default 0;
+    ~^5 1;
+}

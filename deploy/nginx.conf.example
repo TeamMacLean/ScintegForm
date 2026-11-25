@@ -1,0 +1,17 @@
+# Inside the existing HTTPS server block. Keep the VM limited to the NBI network.
+# Confirm TLS certificate paths and SMTP relay limits with NBI before deploying.
+# Also include nginx-observability.conf.example in the http {} context.
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    client_max_body_size 16m;
+    client_body_timeout 60s;
+    proxy_request_buffering off;
+    proxy_read_timeout 180s;
+    proxy_send_timeout 180s;
+    # Failure metadata only; excludes visitor identifiers and submitted information.
+    access_log /var/log/nginx/scinteg-upstream.jsonl scinteg_upstream if=$scinteg_log_failure;
+}
