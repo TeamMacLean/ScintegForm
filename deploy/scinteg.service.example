@@ -16,6 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+# Set DATA_DIR in /etc/scinteg.env inside this path, e.g. DATA_DIR=/var/lib/scinteg/data
 ReadWritePaths=/var/lib/scinteg
 
 [Install]

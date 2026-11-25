@@ -3,10 +3,32 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { temporaryMongo } from './helpers.js';
+
+test('startup failures say what is wrong without exposing database credentials', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'scinteg-startup-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  async function run(env) {
+    const child = spawn(process.execPath, ['server/index.js'], { env: { PATH: process.env.PATH, DATA_DIR: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', data => { stderr += data; });
+    const [code] = await once(child, 'exit');
+    return { code, stderr };
+  }
+  const config = await run({ MAIL_MODE: 'bogus' });
+  assert.equal(config.code, 1); assert.match(config.stderr, /Startup failed: Invalid MAIL_MODE/);
+  const production = await run({ MAIL_MODE: 'production' });
+  assert.match(production.stderr, /PUBLIC_ORIGIN and MONGODB_URI are required/);
+  // Nothing listens on port 9 here; the URI's password must not reach the log.
+  const database = await run({ MONGODB_URI: 'mongodb://scinteg:very-secret@127.0.0.1:9/scintegform_test' });
+  assert.equal(database.code, 1);
+  assert.match(database.stderr, /Startup failed during database \(\w+\)\. Check MONGODB_URI/);
+  assert.doesNotMatch(database.stderr, /very-secret/);
+});
 
 test('production entry point starts, accepts a report, shuts down and reopens its durable queue', async t => {
   const mongo = await temporaryMongo();

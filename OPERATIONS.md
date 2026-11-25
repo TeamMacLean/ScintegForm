@@ -61,6 +61,7 @@ After **this new release and its nginx logging configuration are deployed**, add
 ```sh
 curl --max-time 5 -i http://127.0.0.1:3000/health/live
 curl --max-time 5 -i http://127.0.0.1:3000/health/ready
+curl --max-time 5 -i http://127.0.0.1:3000/health/notifications
 sudo tail -n 100 /var/log/nginx/scinteg-upstream.jsonl
 
 # From this project's directory on the VM; Ctrl-C stops the watcher.
@@ -76,6 +77,7 @@ Liveness 200 with readiness 503 points to MongoDB connectivity. Compare the diag
 | Public HTTP probe | Status and elapsed time through nginx/TLS/network | A 200 home page does not prove uploads, mail or scanning work |
 | Local `/health/live` | Node can answer HTTP | Does not check dependencies |
 | Local `/health/ready` | Mongoose connection is ready | Not a complete database transaction or SMTP/AV check |
+| `/health/notifications` | No notification has failed or stayed unsent for 30 minutes | Status only; use `npm run notifications -- list` for details |
 | App failure/slow-request logs | Server-generated request ID, fixed route label, status, duration, processing stage | Requests nginx cannot forward never reach this layer |
 | Runtime samples | PID, uptime, RSS/heap memory, event-loop p99 delay, database connection state | Node RSS excludes ClamAV and MongoDB subprocesses |
 | PM2 | Restarts, process state, startup/shutdown, stdout/stderr | A restart is evidence, not a diagnosis |
@@ -97,6 +99,7 @@ The one-shot command exits 0 only when all configured probes pass, otherwise 1. 
 Assessments are hints, not root-cause verdicts:
 
 - `public_path_failure`: public site failed while local checks passed (or no local checks were configured). Investigate nginx, TLS, DNS, network routing and upstream configuration.
+- `notifications_need_attention`: the site works but a report or help email has failed or is overdue. Run `npm run notifications -- list` and check `lastError`.
 - `app_unreachable_or_unresponsive`: local Node liveness failed. Compare PM2 restarts and system resource evidence at that time.
 - `app_not_ready`: Node responds but its readiness check fails. Investigate MongoDB connectivity and load.
 - `healthy`: all configured probes passed at that instant; intermittent failures may occur between samples.

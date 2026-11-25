@@ -40,11 +40,14 @@ export async function checkHealth({ publicOrigin, localOrigin = null, timeoutMs 
   const localBase = localOrigin ? origin(localOrigin) : null;
   const specs = [['public', publicBase, '/', null]];
   if (localBase) specs.push(['liveness', localBase, '/health/live', 'ok'], ['readiness', localBase, '/health/ready', 'ready']);
+  // Failed or overdue report emails: checked locally when possible, otherwise through the proxy.
+  specs.push(['notifications', localBase || publicBase, '/health/notifications', 'ok']);
   const checks = Object.fromEntries(await Promise.all(specs.map(async ([name, base, route, expected]) => [name, await probe(base, route, expected, timeoutMs)])));
   const ok = Object.values(checks).every(result => result.ok);
-  const assessment = ok ? 'healthy' : !localBase ? 'public_path_failure'
-    : !checks.liveness.ok ? 'app_unreachable_or_unresponsive'
-    : !checks.readiness.ok ? 'app_not_ready' : 'public_path_failure';
+  const assessment = ok ? 'healthy'
+    : localBase && !checks.liveness.ok ? 'app_unreachable_or_unresponsive'
+    : localBase && !checks.readiness.ok ? 'app_not_ready'
+    : !checks.public.ok ? 'public_path_failure' : 'notifications_need_attention';
   return { time: new Date().toISOString(), event: 'health_sample', ok, assessment, checks };
 }
 

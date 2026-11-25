@@ -5,7 +5,7 @@ export function logEvent(logger, level, event, fields = {}) {
   logger[level]?.(JSON.stringify({ time: new Date().toISOString(), level, event, ...fields }));
 }
 
-const routes = { '/api/form/new': 'report', '/api/help': 'help', '/api/config': 'configuration', '/health/live': 'liveness', '/health/ready': 'readiness', '/': 'home', '/help': 'help_page' };
+const routes = { '/api/form/new': 'report', '/api/help': 'help', '/api/config': 'configuration', '/health/live': 'liveness', '/health/ready': 'readiness', '/health/notifications': 'notifications', '/': 'home', '/help': 'help_page' };
 export function requestDiagnostics(config, logger) {
   return (req, res, next) => {
     const started = performance.now();

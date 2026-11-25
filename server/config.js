@@ -12,6 +12,10 @@ function email(value, label) {
   if (!value || !address.test(value)) throw new Error(`A valid ${label} is required`);
   return value;
 }
+function inside(parent, child) {
+  const relative = path.relative(parent, child);
+  return !relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+}
 
 export function loadConfig(env = process.env) {
   const mailMode = env.MAIL_MODE || 'capture';
@@ -35,10 +39,13 @@ export function loadConfig(env = process.env) {
   const smtpHost = env.SMTP_HOST || '';
   if (mailMode !== 'capture' && !smtpHost) throw new Error('SMTP_HOST is required for delivery');
   const dataDir = path.resolve(env.DATA_DIR || `var/${mailMode}`);
-  const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
-  const relative = path.relative(publicDir, dataDir);
-  if (!relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
+  if (inside(fileURLToPath(new URL('../public/', import.meta.url)), dataDir)) {
     throw new Error('DATA_DIR must be outside the public web directory');
+  }
+  // Evidence must not depend on the working directory or live inside a release folder
+  // that a later deployment replaces.
+  if (production && (!env.DATA_DIR || !path.isAbsolute(env.DATA_DIR) || inside(fileURLToPath(new URL('../', import.meta.url)), dataDir))) {
+    throw new Error('Production requires DATA_DIR to be an absolute path outside the application directory');
   }
   const maxTotalBytes = integer(env, 'MAX_TOTAL_BYTES', 15_000_000, 1, 100_000_000);
   const maxFileBytes = integer(env, 'MAX_FILE_BYTES', Math.min(10_000_000, maxTotalBytes), 1, maxTotalBytes);
@@ -59,7 +66,8 @@ export function loadConfig(env = process.env) {
     smtpUser: env.SMTP_USER, smtpPassword: env.SMTP_PASSWORD,
     sender: email(env.MAIL_FROM || 'scinteg@tsl.ac.uk', 'MAIL_FROM'),
     workerIntervalMs: integer(env, 'WORKER_INTERVAL_MS', 10_000, 50, 300_000),
-    maxMailAttempts: integer(env, 'MAX_MAIL_ATTEMPTS', 5, 1, 10),
+    // 60 attempts with backoff capped at one hour keeps retrying for about two days.
+    maxMailAttempts: integer(env, 'MAX_MAIL_ATTEMPTS', 60, 1, 500),
     opsLogIntervalMs: integer(env, 'OPS_LOG_INTERVAL_MS', 60000, 0, 3600000),
     slowRequestMs: integer(env, 'SLOW_REQUEST_MS', 10000, 1, 180000),
   });

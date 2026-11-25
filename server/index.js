@@ -9,11 +9,23 @@ import { logEvent, startRuntimeDiagnostics } from './observability.js';
 process.umask(0o077);
 let db;
 let mailer;
+let stage = 'configuration';
+const hints = { database: 'Check MONGODB_URI and that MongoDB is running.', storage: 'Check DATA_DIR exists and this user can write to it.' };
+// An error code or class name only: database errors can contain the MongoDB URI and credentials.
+function errorCode(error) {
+  for (const value of [error?.codeName, error?.code, error?.name]) {
+    if (typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_]{1,60}$/.test(value)) return value;
+  }
+  return 'unknown error';
+}
 process.on('uncaughtExceptionMonitor', () => logEvent(console, 'error', 'uncaught_exception', { pid: process.pid }));
 try {
   const config = loadConfig();
+  stage = 'database';
   db = await connectDatabase(config);
+  stage = 'storage';
   const app = await createApp({ config, db });
+  stage = 'startup';
   mailer = createMailer(config);
   const worker = createWorker({ config, db, mailer });
   const stopDiagnostics = startRuntimeDiagnostics(config, db);
@@ -49,8 +61,10 @@ try {
   process.on('SIGTERM', () => stop().catch(() => process.exit(1)));
   process.on('SIGINT', () => stop().catch(() => process.exit(1)));
 } catch (error) {
-  // Configuration errors are safe to show; database errors can contain credentials.
-  console.error(db ? 'startup_failed' : 'Startup failed. Check configuration and MongoDB availability.');
+  // loadConfig's messages are written by this app and never include values, so they are safe to show.
+  console.error(stage === 'configuration'
+    ? `Startup failed: ${error.message}`
+    : `Startup failed during ${stage} (${errorCode(error)}). ${hints[stage] || ''}`.trim());
   mailer?.close();
   await db?.close();
   process.exitCode = 1;

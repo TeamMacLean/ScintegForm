@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../server/config.js';
 
 test('missing mail mode captures mail; legacy production recipients cannot enable delivery', () => {
@@ -14,6 +15,14 @@ test('test mode cannot route to another address', () => {
 
 test('production requires explicit recipients, origin, database and scanning', () => {
   assert.throws(() => loadConfig({ MAIL_MODE: 'production' }), /required/);
+});
+
+test('production evidence needs an absolute DATA_DIR outside the application directory', () => {
+  const production = { MAIL_MODE: 'production', MONGODB_URI: 'mongodb://localhost/test', PUBLIC_ORIGIN: 'https://scinteg.example.invalid', REPORT_RECIPIENTS: 'investigator@example.invalid', WEBMASTER_EMAIL: 'support@example.invalid', SMTP_HOST: 'smtp.example.invalid' };
+  assert.throws(() => loadConfig(production), /DATA_DIR/);
+  assert.throws(() => loadConfig({ ...production, DATA_DIR: 'var/production' }), /DATA_DIR/);
+  assert.throws(() => loadConfig({ ...production, DATA_DIR: fileURLToPath(new URL('../var/production', import.meta.url)) }), /DATA_DIR/);
+  assert.equal(loadConfig({ ...production, DATA_DIR: '/var/lib/scinteg/data' }).dataDir, '/var/lib/scinteg/data');
 });
 
 test('private evidence cannot be configured under the public web directory', () => {

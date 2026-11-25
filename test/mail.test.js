@@ -61,7 +61,7 @@ test('partial SMTP acceptance is surfaced for operator review', async t => {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const config = loadConfig({ MAIL_MODE: 'production', PUBLIC_ORIGIN: 'https://scinteg.example.invalid', MONGODB_URI: 'mongodb://127.0.0.1/scintegform_test', REPORT_RECIPIENTS: 'accept@example.invalid,reject@example.invalid', WEBMASTER_EMAIL: 'support@example.invalid', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(server.server.address().port), SMTP_REQUIRE_TLS: 'false' });
+  const config = loadConfig({ MAIL_MODE: 'production', PUBLIC_ORIGIN: 'https://scinteg.example.invalid', MONGODB_URI: 'mongodb://127.0.0.1/scintegform_test', DATA_DIR: path.join(os.tmpdir(), 'scinteg-partial-delivery'), REPORT_RECIPIENTS: 'accept@example.invalid,reject@example.invalid', WEBMASTER_EMAIL: 'support@example.invalid', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(server.server.address().port), SMTP_REQUIRE_TLS: 'false' });
   const mailer = createMailer(config);
   t.after(() => mailer.close());
   await assert.rejects(mailer.send({ _id: '0123456789abcdef01234567', kind: 'report', description: 'Synthetic partial acceptance test', files: [] }), { code: 'PARTIAL_DELIVERY' });

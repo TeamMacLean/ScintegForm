@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readdir, readFile, utimes } from 'node:fs/promises';
+import { mkdir, readdir, readFile, utimes } from 'node:fs/promises';
 import http from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
@@ -71,6 +71,17 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
       const response = await build(post()); assert.equal(response.status, 400); await clean();
     });
   }
+
+  await t.test('line breaks sent as CRLF do not count twice against the description limit', async () => {
+    // 19,999 characters in the textarea, but 20,398 once a browser sends each line break as CRLF.
+    const text = Array.from({ length: 400 }, () => 'x'.repeat(49)).join('\r\n');
+    const response = await post().field('description', text);
+    assert.equal(response.status, 202);
+    await worker.tick();
+    const mail = await simpleParser(await readFile(path.join(config.captureDir, `${response.body.formId}.eml`)));
+    assert.match(mail.text, /x{49}\nx{49}/);
+    await clean();
+  });
 
   for (const [name, filename, bytes] of [
     ['executable', 'malware.exe', Buffer.from('MZ executable')],
@@ -177,10 +188,14 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
   await t.test('SMTP failure keeps the report and retries after restart without a new submission', async () => {
     const response = await post().field('description', 'Report during SMTP outage');
     let clock = new Date(Date.now() + 1000);
-    const failing = createWorker({ config, db, now: () => clock, mailer: { async send() { throw new Error('private SMTP details'); } }, logger: { error() {} } });
+    const logged = [];
+    const failing = createWorker({ config, db, now: () => clock, mailer: { async send() { throw Object.assign(new Error('private SMTP details'), { code: 'EENVELOPE', responseCode: 550 }); } }, logger: { error: (...args) => logged.push(args) } });
     await failing.tick();
     let pending = (await db.listNotifications()).find(item => String(item._id) === response.body.formId);
     assert.equal(pending.notification.state, 'pending'); assert.equal(pending.notification.attempts, 1);
+    // The error code is kept for operators; the SMTP response text is not.
+    assert.equal(pending.notification.lastError, 'EENVELOPE_550');
+    assert.doesNotMatch(JSON.stringify([pending, logged]), /private SMTP details/);
     assert.equal(await failing.tick(), false);
     clock = new Date(clock.getTime() + 31_000);
     const restarted = createWorker({ config, db, mailer, now: () => clock });
@@ -189,7 +204,7 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
     assert.ok((await readdir(config.captureDir)).includes(`${response.body.formId}.eml`));
   });
 
-  await t.test('failed DB writes retain uncertain evidence until safe orphan reconciliation', async () => {
+  await t.test('cleanup never deletes report evidence; unreferenced report folders are only reported', async () => {
     const unavailable = await createApp({ config, db: { ...db, save: async () => { throw new Error('write outcome unknown'); } }, logger: { error() {} } });
     const before = new Set(await readdir(path.join(config.dataDir, 'reports')));
     const response = await post(unavailable).field('description', 'report').attach('files', Buffer.from('evidence'), 'a.txt');
@@ -197,13 +212,22 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
     const dirs = await readdir(path.join(config.dataDir, 'reports'));
     const orphan = dirs.find(dir => !before.has(dir));
     assert.ok(orphan);
-    await cleanupAbandoned(config, db);
-    assert.ok((await readdir(path.join(config.dataDir, 'reports'))).includes(orphan));
+    const logged = [];
+    const logger = { warn: line => logged.push(JSON.parse(line)) };
+    assert.deepEqual(await cleanupAbandoned(config, db, Date.now(), logger), []);
     const old = new Date(Date.now() - 2 * 86400_000);
     await utimes(path.join(config.dataDir, 'reports', orphan), old, old);
-    await cleanupAbandoned(config, db);
+    const abandonedUpload = path.join(config.dataDir, 'quarantine', randomUUID());
+    await mkdir(abandonedUpload); await utimes(abandonedUpload, old, old);
+    assert.deepEqual(await cleanupAbandoned(config, db, Date.now(), logger), [orphan]);
+    assert.ok((await readdir(path.join(config.dataDir, 'reports'))).includes(orphan));
+    assert.equal(logged.at(-1).event, 'storage_orphans_found');
+    assert.deepEqual(logged.at(-1).references, [orphan]);
+    await clean();
+    // A wrong or empty database (e.g. a typo in MONGODB_URI) makes every report look unreferenced: still nothing is deleted.
+    for (const accepted of before) await utimes(path.join(config.dataDir, 'reports', accepted), old, old);
+    await cleanupAbandoned(config, { exists: async () => null }, Date.now(), logger);
     const remaining = await readdir(path.join(config.dataDir, 'reports'));
-    assert.ok(!remaining.includes(orphan));
     for (const accepted of before) assert.ok(remaining.includes(accepted));
   });
 
@@ -275,13 +299,37 @@ test('report acceptance, delivery and retries use isolated storage and real Mong
     const response = await post().field('description', 'Persistent SMTP failure');
     let clock = new Date(Date.now() + 1000);
     const failing = createWorker({ config, db, now: () => clock, mailer: { async send() { throw new Error('SMTP outage'); } }, logger: { error() {} } });
-    for (let i = 0; i < config.maxMailAttempts; i++) { await failing.tick(); clock = new Date(clock.getTime() + 3600_000); }
+    let elapsed = 0;
+    for (let i = 0; i < config.maxMailAttempts; i++) {
+      const record = (await db.listNotifications()).find(item => String(item._id) === response.body.formId);
+      const wait = Math.max(0, record.notification.nextAttemptAt - clock);
+      clock = new Date(clock.getTime() + wait); elapsed += wait;
+      assert.equal(await failing.tick(), true);
+    }
+    // The default keeps retrying through an outage of a day or more before giving up.
+    assert.ok(elapsed > 36 * 3600_000, `retried for only ${Math.round(elapsed / 3600_000)} hours`);
     const status = (await db.listNotifications()).find(item => String(item._id) === response.body.formId);
     assert.equal(status.notification.state, 'failed');
-    assert.equal(status.notification.attempts, 5);
+    assert.equal(status.notification.attempts, config.maxMailAttempts);
     assert.equal(await failing.tick(), false);
+    const health = await request(app).get('/health/notifications');
+    assert.equal(health.status, 503); assert.deepEqual(health.body, { status: 'attention' });
     assert.equal((await db.retry(response.body.formId)).modifiedCount, 1);
     await worker.tick();
     assert.ok(!(await db.listNotifications()).some(item => String(item._id) === response.body.formId));
+  });
+
+  await t.test('notification health flags overdue emails without revealing counts or references', async () => {
+    while (await worker.tick()) { /* drain anything due */ }
+    let health = await request(app).get('/health/notifications');
+    assert.equal(health.status, 200); assert.deepEqual(health.body, { status: 'ok' });
+    await post().field('description', 'Waiting for the worker');
+    assert.equal((await request(app).get('/health/notifications')).status, 200, 'a fresh notification is not overdue');
+    assert.equal(await db.notificationsNeedAttention(new Date(Date.now() + 1000)), true, 'the same notification once older than the threshold');
+    await worker.tick();
+    assert.equal(await db.notificationsNeedAttention(new Date(Date.now() + 1000)), false);
+    const offline = await createApp({ config, db: { ...db, healthy: () => false }, logger: { error() {} } });
+    health = await request(offline).get('/health/notifications');
+    assert.equal(health.status, 503); assert.deepEqual(health.body, { status: 'unavailable' });
   });
 });

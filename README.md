@@ -27,7 +27,7 @@ For VPN-connected testing, use `npm run test:mail:vpn -- --check-only` to check 
 
 Recipient selection happens at the final mail boundary. Test/capture modes overwrite the SMTP envelope as well as headers, accept no alternative test recipient, and never CC/BCC production recipients. Production report emails have no implicit webmaster BCC. Subjects outside production begin `[TEST]`.
 
-The legacy `WEBMASTER_TESTING`, `WEBMASTER`, `EMAIL_RECIPIENTS`, LDAP, JWT and `API_URL` configuration is no longer used. Missing `MAIL_MODE` always means capture, even when legacy production settings are present. Production requires a HTTPS `PUBLIC_ORIGIN`, explicit `MONGODB_URI`, full recipient addresses, and ClamAV scanning. SMTP STARTTLS is required by default; do not disable it without confirming the NBI relay's requirements.
+The legacy `WEBMASTER_TESTING`, `WEBMASTER`, `EMAIL_RECIPIENTS`, LDAP, JWT and `API_URL` configuration is no longer used. Missing `MAIL_MODE` always means capture, even when legacy production settings are present. Production requires a HTTPS `PUBLIC_ORIGIN`, explicit `MONGODB_URI`, an absolute `DATA_DIR` outside the application directory, full recipient addresses, and ClamAV scanning. SMTP STARTTLS is required by default; do not disable it without confirming the NBI relay's requirements.
 
 To send one **synthetic** report with a harmless text attachment to George:
 
@@ -102,13 +102,13 @@ The regular suite retains deterministic subprocess stubs for clean/infected/erro
 2. Move approved files from `DATA_DIR/quarantine/<random-id>` to `DATA_DIR/reports/<reference>` on the same filesystem.
 3. Persist the report and pending notification in MongoDB's `submissions_v2` collection.
 4. Return HTTP **202**, `{ "status": "received", "formId": "..." }`. This means safely received and queued, **not** email delivery confirmed.
-5. The in-process worker atomically claims a notification, sends it, and records its state. Failed attempts use exponential backoff (30 seconds initially), up to five attempts by default. A five-minute lease recovers work after a crash.
+5. The in-process worker atomically claims a notification, sends it, and records its state. Failed attempts use exponential backoff (30 seconds initially, capped at one hour) for 60 attempts by default, about two days, so a relay outage does not strand reports. Each failure records only an error code such as `ECONNECTION` or `EENVELOPE_550`. A five-minute lease recovers work after a crash.
 
 Repeating the same key and content returns the same reference. Reusing a key for different content returns 409. The browser disables submission during processing and retains entered data on failure. Reloading the browser loses an unsent draft and its key, so retry from the same open page after uncertain failures.
 
 Mail delivery is **at least once**: a crash after SMTP acceptance but before recording success can cause a duplicate email. Stable Message-IDs help investigation but cannot guarantee recipient deduplication. Partial recipient acceptance stops automatic retries for operator review.
 
-Uploads and MongoDB writes cannot be one atomic transaction. Ambiguous database failures retain files until reconciliation can prove they are unreferenced. Startup/hourly cleanup removes only unreferenced directories older than 24 hours. Accepted evidence is never automatically expired. Set an institutional retention policy covering MongoDB, attachment storage, backups, and recipient mailboxes before introducing deletion.
+Uploads and MongoDB writes cannot be one atomic transaction. Ambiguous database failures retain files until reconciliation can prove they are unreferenced. Startup/hourly cleanup deletes only abandoned `quarantine` upload directories older than 24 hours. It never deletes `reports` directories: one unknown to the database is logged as `storage_orphans_found`, because a wrong `MONGODB_URI` or an older backup makes real evidence look unreferenced. Check the database connection before removing anything by hand. Accepted evidence is never automatically expired. Set an institutional retention policy covering MongoDB, attachment storage, backups, and recipient mailboxes before introducing deletion.
 
 The new collection leaves historical `forms` and old `uploads/` intact; it does not migrate or resend old reports. Back them up and retain them according to policy. Capture, test and production notifications are separated by a stored mode and are never automatically promoted between modes. Use separate databases and data directories for staging and production as well.
 
@@ -121,9 +121,9 @@ npm run notifications -- list
 npm run notifications -- retry <reference>
 ```
 
-These commands use the current mode/database. List output includes only identifiers, states, attempt counts and timestamps, never report content. Review `failed` notifications and old `pending` notifications; resolve the cause before retrying, especially after partial/uncertain delivery. Integrate this check with the VM's existing monitoring. Log events `notification_delivery_failed`, `notification_worker_unavailable` and `storage_cleanup_failed` also need attention.
+These commands use the current mode/database. List output includes only identifiers, states, attempt counts and timestamps, never report content. Review `failed` notifications and old `pending` notifications; resolve the cause before retrying, especially after partial/uncertain delivery. Integrate this check with the VM's existing monitoring. Log events `notification_delivery_failed`, `notification_worker_unavailable`, `storage_cleanup_failed` and `storage_orphans_found` also need attention.
 
-`/health/live` checks process liveness; `/health/ready` checks MongoDB connectivity. These endpoints do **not** certify SMTP delivery, scanner freshness, or free disk capacity. Monitor those separately. The in-memory global request limit avoids retaining IP identifiers; nginx/network limits should be tuned for the site's shared users. The application should run as a single instance on this VM; multiple instances need coordinated upload/rate limits and cleanup.
+`/health/live` checks process liveness; `/health/ready` checks MongoDB connectivity; `/health/notifications` returns 503 when any notification has failed or is still unsent 30 minutes after submission (status only, no counts or references). Point the VM's monitoring at `/health/notifications`: it is the only automatic signal that investigators have not received a report. These endpoints do **not** certify scanner freshness or free disk capacity. Monitor those separately. The in-memory global request limit avoids retaining IP identifiers; nginx/network limits should be tuned for the site's shared users. The application should run as a single instance on this VM; multiple instances need coordinated upload/rate limits and cleanup.
 
 Back up MongoDB and `DATA_DIR/reports` together with restricted access, test restoration, and monitor free space. Run under an unprivileged dedicated user with private directories. No request body, filename, report text, credentials or client IP is intentionally logged by the app. Review nginx, system, SMTP, VPN and NBI logging separately; the app cannot promise network-level anonymity.
 
@@ -138,8 +138,6 @@ Back up MongoDB and `DATA_DIR/reports` together with restricted access, test res
 7. After restart, check readiness, queue state and disk space. Reopening an existing browser removes obsolete service-worker caches; `sw.js` is a retirement worker. On rollback, preserve `submissions_v2` and new files and inspect pending notifications: the old app will not process this new queue.
 
 The modernised app removes the old Nuxt/Vue build chain, unused LDAP/admin routes, experimental upload routes, and committed generated assets. Their history remains in Git. The public workflows remain report submission and technical help; there is no investigator portal in this version.
-
-See [CLAUDE_AUDIT.md](CLAUDE_AUDIT.md) for the independent source review, reproduced findings and fixes, disputed claims, and remaining VM validation. The original review is preserved separately so its claims can be checked against the follow-up evidence.
 
 ## Tests
 

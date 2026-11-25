@@ -6,8 +6,10 @@ import { checkHealth } from '../scripts/healthcheck.js';
 test('monitor distinguishes a public 502 from a database-readiness failure without storing response bodies', async t => {
   let publicStatus = 502;
   let ready = true;
+  let notifications = 'ok';
   const server = http.createServer((req, res) => {
     if (req.url === '/') { res.writeHead(publicStatus); res.end('private upstream error details'); }
+    else if (req.url === '/health/notifications') { res.writeHead(notifications === 'ok' ? 200 : 503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: notifications })); }
     else { res.writeHead(req.url === '/health/ready' && !ready ? 503 : 200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: req.url === '/health/live' ? 'ok' : ready ? 'ready' : 'unavailable' })); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -23,6 +25,12 @@ test('monitor distinguishes a public 502 from a database-readiness failure witho
   ready = true; publicStatus = 200;
   result = await checkHealth({ publicOrigin: origin, localOrigin: origin });
   assert.equal(result.ok, true); assert.equal(result.assessment, 'healthy');
+  notifications = 'attention';
+  result = await checkHealth({ publicOrigin: origin, localOrigin: origin });
+  assert.equal(result.ok, false); assert.equal(result.assessment, 'notifications_need_attention');
+  // A monitor on another machine (no local origin) still sees stuck notifications through the proxy.
+  result = await checkHealth({ publicOrigin: origin, localOrigin: null });
+  assert.equal(result.assessment, 'notifications_need_attention');
 });
 
 test('monitor bounds timeouts and rejects URLs containing credentials or paths', async t => {

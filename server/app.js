@@ -9,11 +9,16 @@ import { requestDiagnostics } from './observability.js';
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const sha256 = text => createHash('sha256').update(text).digest('hex');
+// A notification still unsent this long after submission needs an operator to look.
+const NOTIFICATION_OVERDUE_MS = 30 * 60_000;
 function description(value) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 20000 || /\x00/.test(value)) {
+  // Browsers send textarea line breaks as CRLF; without this each one counts twice
+  // against the limit the form's maxlength already enforced.
+  const text = typeof value === 'string' ? value.replace(/\r\n?/g, '\n') : value;
+  if (typeof text !== 'string' || !text.trim() || text.length > 20000 || /\x00/.test(text)) {
     throw new HttpError(400, 'Enter a description between 1 and 20,000 characters.');
   }
-  return value.trim();
+  return text.trim();
 }
 function receipt(record) { return { status: 'received', formId: String(record._id) }; }
 async function syncDirectory(directory) {
@@ -34,6 +39,14 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
   app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.get('/health/live', (req, res) => res.json({ status: 'ok' }));
   app.get('/health/ready', (req, res) => res.status(db.healthy() ? 200 : 503).json({ status: db.healthy() ? 'ready' : 'unavailable' }));
+  // Status only, no counts or references: this route is reachable through the proxy.
+  app.get('/health/notifications', async (req, res) => {
+    let status = 'unavailable';
+    try {
+      if (db.healthy()) status = await db.notificationsNeedAttention(new Date(Date.now() - NOTIFICATION_OVERDUE_MS)) ? 'attention' : 'ok';
+    } catch { /* reported as unavailable */ }
+    res.status(status === 'ok' ? 200 : 503).json({ status });
+  });
   app.get('/api/config', (req, res) => res.json({ maxFiles: config.maxFiles, maxFileBytes: config.maxFileBytes, maxTotalBytes: config.maxTotalBytes, allowedExtensions: Object.keys(allowedTypes), testing: config.mailMode !== 'production' }));
 
   let requests = 0;

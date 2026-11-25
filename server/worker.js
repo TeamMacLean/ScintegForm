@@ -1,3 +1,11 @@
+// Record an error code such as ECONNECTION or EENVELOPE_550 so operators can tell a
+// relay refusal from a TLS or missing-file problem. Never SMTP response text, report
+// contents, filenames or addresses.
+function deliveryError(error) {
+  const code = typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{1,39}$/.test(error.code) ? error.code : 'DELIVERY_FAILED';
+  return Number.isInteger(error?.responseCode) ? `${code}_${error.responseCode}` : code;
+}
+
 export function createWorker({ config, db, mailer, now = () => new Date(), logger = console }) {
   let running;
   let timer;
@@ -9,13 +17,13 @@ export function createWorker({ config, db, mailer, now = () => new Date(), logge
       await db.finish(record, { state: 'sent', sentAt: now(), lastError: null });
     } catch (error) {
       const terminal = record.notification.attempts >= config.maxMailAttempts || error.code === 'PARTIAL_DELIVERY';
-      // Never put SMTP responses, report contents, filenames or addresses into logs.
+      const lastError = deliveryError(error);
       await db.finish(record, {
         state: terminal ? 'failed' : 'pending',
-        lastError: error.code === 'PARTIAL_DELIVERY' ? 'PARTIAL_DELIVERY' : 'DELIVERY_FAILED',
+        lastError,
         nextAttemptAt: new Date(now().getTime() + Math.min(3600_000, 30_000 * 2 ** (record.notification.attempts - 1))),
       });
-      logger.error('notification_delivery_failed', { id: String(record._id), terminal });
+      logger.error('notification_delivery_failed', { id: String(record._id), terminal, error: lastError });
     }
     return true;
   }

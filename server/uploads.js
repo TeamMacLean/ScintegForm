@@ -9,6 +9,7 @@ import path from 'node:path';
 import multer from 'multer';
 import { fileTypeFromFile } from 'file-type';
 import yauzl from 'yauzl';
+import { logEvent } from './observability.js';
 
 const run = promisify(execFile);
 export const allowedTypes = Object.freeze({
@@ -134,16 +135,25 @@ export async function validateFiles(files, config, scanner = scanFile) {
   return result;
 }
 
-export async function cleanupAbandoned(config, db, now = Date.now()) {
-  // Never expire accepted evidence automatically. Only unreferenced, day-old directories.
-  for (const area of ['quarantine', 'reports']) {
-    const parent = path.join(config.dataDir, area);
-    for (const entry of await readdir(parent, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !/^(?:[a-f0-9]{24}|[a-f0-9-]{36})$/.test(entry.name)) continue;
-      const target = path.join(parent, entry.name);
-      if (now - (await stat(target)).mtimeMs < 86400_000) continue;
-      if (area === 'reports' && await db.exists(entry.name)) continue;
-      await rm(target, { recursive: true, force: true });
-    }
+export async function cleanupAbandoned(config, db, now = Date.now(), logger = console) {
+  // Only day-old upload directories left in quarantine by a crash are deleted.
+  const quarantine = path.join(config.dataDir, 'quarantine');
+  for (const entry of await readdir(quarantine, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^[a-f0-9-]{36}$/.test(entry.name)) continue;
+    const target = path.join(quarantine, entry.name);
+    if (now - (await stat(target)).mtimeMs < 86400_000) continue;
+    await rm(target, { recursive: true, force: true });
   }
+  // Report directories are never deleted automatically. One the database does not know
+  // about may be a failed save, but it may also be real evidence seen through a wrong
+  // MONGODB_URI or an older backup, so it is only reported for an operator to check.
+  const reports = path.join(config.dataDir, 'reports');
+  const orphans = [];
+  for (const entry of await readdir(reports, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^[a-f0-9]{24}$/.test(entry.name)) continue;
+    if (now - (await stat(path.join(reports, entry.name))).mtimeMs < 86400_000) continue;
+    if (!await db.exists(entry.name)) orphans.push(entry.name);
+  }
+  if (orphans.length) logEvent(logger, 'warn', 'storage_orphans_found', { count: orphans.length, references: orphans });
+  return orphans;
 }

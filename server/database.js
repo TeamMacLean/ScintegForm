@@ -52,6 +52,11 @@ export async function connectDatabase(config) {
       $set: Object.fromEntries(Object.entries(fields).map(([key, value]) => [`notification.${key}`, value])),
       $unset: { 'notification.leaseUntil': '', 'notification.leaseToken': '' },
     }),
+    // True when any notification has failed or is still unsent after being created before `overdueBefore`.
+    notificationsNeedAttention: overdueBefore => Record.exists({ mode: config.mailMode, $or: [
+      { 'notification.state': 'failed' },
+      { 'notification.state': { $in: ['pending', 'sending'] }, createdAt: { $lte: overdueBefore } },
+    ] }).then(Boolean),
     listNotifications: () => Record.find({ mode: config.mailMode, 'notification.state': { $ne: 'sent' } }, { _id: 1, kind: 1, createdAt: 1, notification: 1 }).lean(),
     retry: id => Record.updateOne({ _id: id, mode: config.mailMode, 'notification.state': 'failed' }, {
       $set: { 'notification.state': 'pending', 'notification.attempts': 0, 'notification.nextAttemptAt': new Date() },
