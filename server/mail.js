@@ -6,8 +6,11 @@ import { TEST_EMAIL } from './config.js';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-export function createMailer(config) {
-  const capture = config.mailMode === 'capture';
+// captureOnly writes messages to config.captureDir instead of using SMTP while keeping
+// the recipients and subject of config.mailMode, so a recovery export matches the
+// original notification. It can only stop mail being sent, never cause sending.
+export function createMailer(config, { captureOnly = false } = {}) {
+  const capture = captureOnly || config.mailMode === 'capture';
   const transport = nodemailer.createTransport(capture ? {
     streamTransport: true, buffer: true, newline: 'windows',
     disableFileAccess: true, disableUrlAccess: true,
@@ -67,7 +70,8 @@ export function createMailer(config) {
         ? `Anonymous help request\nReference: ${id}\nSubject: ${record.subject}\n\n${record.description}`
         : `A scientific misconduct report has been submitted.\nReference: ${id}\n\n${record.description}\n\nAttachments: ${(record.files || []).map(f => f.name).join(', ') || '(none)'}`;
       const info = await transport.sendMail({
-        from: { name: 'Scinteg', address: config.sender }, to, bcc,
+        // A file capture would keep a Bcc header; leave it out so an export shows what the visible recipients received.
+        from: { name: 'Scinteg', address: config.sender }, to, bcc: capture ? [] : bcc,
         envelope: { from: config.sender, to: envelopeTo },
         messageId: `<scinteg-${id}@${config.sender.split('@')[1]}>`,
         subject: `${config.mailMode === 'production' ? '' : '[TEST] '}${record.kind === 'help' ? 'Scinteg anonymous help request' : 'Scinteg report — action required'} (${id})`,

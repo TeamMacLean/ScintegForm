@@ -5,8 +5,7 @@ import { createMailer } from './mail.js';
 import { createWorker } from './worker.js';
 import { cleanupAbandoned } from './uploads.js';
 import { logEvent, startRuntimeDiagnostics } from './observability.js';
-import { createOperatorAlerts } from './alerts.js';
-import { statfs } from 'node:fs/promises';
+import { createOperatorAlerts, runOperationalChecks } from './alerts.js';
 
 process.umask(0o077);
 let db;
@@ -33,15 +32,8 @@ try {
   stage = 'startup';
   const worker = createWorker({ config, db, mailer, onIssue });
   let checking;
-  const checkOperations = () => checking ||= (async () => {
-    try {
-      if (!db.healthy()) await alerts.notify('DATABASE_UNAVAILABLE');
-      else for (const record of await db.attentionNotifications(new Date(Date.now() - config.notificationOverdueMs))) await alerts.notify('NOTIFICATIONS_NEED_ATTENTION', String(record._id));
-      const disk = await statfs(config.dataDir);
-      if (disk.bavail * disk.bsize < config.minFreeBytes + config.maxTotalBytes * config.maxConcurrentUploads) await alerts.notify('STORAGE_LOW');
-    } catch { await alerts.notify('DATABASE_UNAVAILABLE'); }
-    await alerts.flush();
-  })().catch(() => console.error('operator_alert_delivery_failed')).finally(() => { checking = undefined; });
+  const checkOperations = () => checking ||= runOperationalChecks({ config, db, alerts })
+    .catch(() => console.error('operator_alert_delivery_failed')).finally(() => { checking = undefined; });
   const opsTimer = setInterval(checkOperations, 60_000); opsTimer.unref();
   const stopDiagnostics = startRuntimeDiagnostics(config, db);
   const server = app.listen(config.port, config.host, () => {

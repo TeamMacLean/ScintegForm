@@ -15,9 +15,9 @@ try {
     const record = await db.getNotification(id);
     if (!record) throw new Error('Missing notification');
     const captureDir = path.join(config.dataDir, 'recovery', `${id}-${Date.now()}`);
-    const capture = createMailer({ ...config, mailMode: 'capture', captureDir });
+    const capture = createMailer({ ...config, captureDir }, { captureOnly: true });
     try { await capture.send(record); } finally { capture.close(); }
-    console.info(`Private recovery email: ${path.join(captureDir, `${id}.eml`)}. Contains sensitive evidence; no email sent. Open and forward manually only to the verified recipients.`);
+    console.info(`Private recovery email: ${path.join(captureDir, `${id}.eml`)}. Addressed and titled as the original ${config.mailMode} notification. Contains sensitive evidence; no email sent. Open and forward manually only to the verified recipients.`);
   } else {
     for (const record of await db.listNotifications()) console.info(JSON.stringify({ id: String(record._id), kind: record.kind, createdAt: record.createdAt, state: record.notification.state, attempts: record.notification.attempts, lastError: record.notification.lastError }));
   }

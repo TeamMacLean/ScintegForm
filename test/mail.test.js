@@ -85,3 +85,18 @@ test('production reports BCC the webmaster; help and operational alerts go only 
   assert.deepEqual(received[2].to, ['deeks@nbi.ac.uk']);
   assert.doesNotMatch(received[2].raw.toString(), /must not appear/);
 });
+
+test('a production recovery export is written to disk with the original recipients and subject, without SMTP', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'scinteg-export-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  // Nothing listens on port 9: any SMTP attempt would fail the send.
+  const config = loadConfig({ MAIL_MODE: 'production', PUBLIC_ORIGIN: 'https://review.invalid', MONGODB_URI: 'mongodb://127.0.0.1/test', DATA_DIR: dir, SMTP_HOST: '127.0.0.1', SMTP_PORT: '9', REPORT_RECIPIENTS: 'nick@example.invalid,debbie@example.invalid', WEBMASTER_EMAIL: 'deeks@nbi.ac.uk' });
+  const captureDir = path.join(dir, 'recovery', 'export');
+  const mailer = createMailer({ ...config, captureDir }, { captureOnly: true });
+  t.after(() => mailer.close());
+  await mailer.send({ _id: '0123456789abcdef01234567', kind: 'report', description: 'Synthetic export', files: [] });
+  const message = await simpleParser(await readFile(path.join(captureDir, '0123456789abcdef01234567.eml')));
+  assert.equal(message.to.text, 'nick@example.invalid, debbie@example.invalid');
+  assert.equal(message.subject, 'Scinteg report — action required (0123456789abcdef01234567)');
+  assert.equal(message.bcc, undefined);
+});

@@ -57,7 +57,7 @@ npm run notifications -- --env-file /etc/scinteg.env list
 npm run notifications -- --env-file /etc/scinteg.env export REFERENCE
 ```
 
-The export creates a private `.eml` under `DATA_DIR/recovery`, addressed to George and containing the original attachments. Open it in an approved mail client and forward only to the verified intended recipients. Never put it in `public/`, paste it into chat or attach it to a diagnostic ticket. Check George's BCC copy/relay delivery evidence first, especially with `PARTIAL_DELIVERY` or `DELIVERY_UNCERTAIN`; forward only to recipients still needing it.
+The export creates a private `.eml` under `DATA_DIR/recovery` with the original attachments, addressed and titled exactly as the original notification for the selected mode: in production, to the investigators with no `[TEST]` prefix (George's BCC is not shown in the file); in test or capture mode, to George with `[TEST]`. Open it in an approved mail client and forward only to the verified intended recipients. Never put it in `public/`, paste it into chat or attach it to a diagnostic ticket. Check George's BCC copy/relay delivery evidence first, especially with `PARTIAL_DELIVERY` or `DELIVERY_UNCERTAIN`; forward only to recipients still needing it.
 
 After confirming manual delivery, mark a **failed** notification resolved:
 

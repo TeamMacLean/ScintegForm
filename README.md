@@ -129,7 +129,7 @@ Back up MongoDB and `DATA_DIR/reports` together with restricted access, test res
 
 ## VM upgrade
 
-Start with [VM_PRODUCTION_CHECKS.md](VM_PRODUCTION_CHECKS.md), the AlmaLinux 9 checklist for Warp/VM operators. [DATA_RETENTION_AND_RECOVERY.md](DATA_RETENTION_AND_RECOVERY.md) covers the implemented offline backup, historical evidence preservation and private email export/manual resolution. [CLAUDE_GREENLIGHT_PROMPT.md](CLAUDE_GREENLIGHT_PROMPT.md) contains the final focused review request.
+Start with [VM_PRODUCTION_CHECKS.md](VM_PRODUCTION_CHECKS.md), the AlmaLinux 9 checklist for Warp/VM operators. [DATA_RETENTION_AND_RECOVERY.md](DATA_RETENTION_AND_RECOVERY.md) covers the implemented offline backup, historical evidence preservation and private email export/manual resolution.
 
 All VM commands must select the same environment as the service, for example `npm run test:scanner -- --env-file /etc/scinteg.env`. The shared launcher loads extra CA certificates before starting Node, rather than relying on a late-loaded environment setting.
 
