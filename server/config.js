@@ -45,8 +45,10 @@ export function loadConfig(env = process.env) {
   catch { throw new Error('Invalid PUBLIC_ORIGIN'); }
   if (production && !origin.startsWith('https://')) throw new Error('Production PUBLIC_ORIGIN must use HTTPS');
   const scanMode = env.UPLOAD_SCAN_MODE || (mailMode === 'capture' ? 'disabled' : 'clamav');
-  if (!['disabled', 'clamav'].includes(scanMode) || (production && scanMode !== 'clamav')) {
-    throw new Error('Production requires UPLOAD_SCAN_MODE=clamav');
+  // George explicitly approved production uploads without antivirus scanning.
+  // Production still defaults to ClamAV; disabling it requires an explicit setting.
+  if (!['disabled', 'clamav'].includes(scanMode)) {
+    throw new Error('Invalid UPLOAD_SCAN_MODE');
   }
   const recipients = production
     ? [...new Set((env.REPORT_RECIPIENTS || '').split(',').map(s => email(s.trim(), 'REPORT_RECIPIENTS address')))]

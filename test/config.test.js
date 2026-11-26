@@ -15,7 +15,7 @@ test('test mode cannot route to another address', () => {
   assert.throws(() => loadConfig({ MAIL_MODE: 'test', TEST_EMAIL: 'someone@example.org' }), /deeks/);
 });
 
-test('production requires explicit recipients, origin, database and scanning', () => {
+test('production requires explicit recipients, origin and database', () => {
   assert.throws(() => loadConfig({ MAIL_MODE: 'production' }), /required/);
 });
 
@@ -31,8 +31,18 @@ test('private evidence cannot be configured under the public web directory', () 
   assert.throws(() => loadConfig({ DATA_DIR: './public/evidence' }), /public/);
 });
 
-test('invalid limits and insecure production scanning fail at startup', () => {
+test('invalid limits and unknown scan modes fail at startup', () => {
   assert.throws(() => loadConfig({ MAX_FILES: 'NaN' }), /MAX_FILES/);
   assert.throws(() => loadConfig({ MAX_TOTAL_BYTES: '100', MAX_FILE_BYTES: '101' }), /MAX_FILE_BYTES/);
-  assert.throws(() => loadConfig({ MAIL_MODE: 'production', MONGODB_URI: 'mongodb://localhost/test', PUBLIC_ORIGIN: 'https://scinteg.example.invalid', UPLOAD_SCAN_MODE: 'disabled' }), /clamav/);
+  assert.throws(() => loadConfig({ UPLOAD_SCAN_MODE: 'typo' }), /UPLOAD_SCAN_MODE/);
+});
+
+test('production permits the explicit antivirus opt-out while retaining the default scanner', () => {
+  const env = { MAIL_MODE: 'production', MONGODB_URI: 'mongodb://localhost/test', PUBLIC_ORIGIN: 'https://scinteg.example.invalid', REPORT_RECIPIENTS: 'investigator@example.invalid', SMTP_HOST: 'smtp.example.invalid', DATA_DIR: '/var/lib/scinteg/data', ATTACHMENTS_ENABLED: 'true' };
+  assert.equal(loadConfig(env).scanMode, 'clamav');
+  const optedOut = loadConfig({ ...env, UPLOAD_SCAN_MODE: 'disabled' });
+  assert.equal(optedOut.scanMode, 'disabled');
+  assert.equal(optedOut.attachmentsEnabled, true);
+  assert.equal(optedOut.mailMode, 'production');
+  assert.deepEqual(optedOut.recipients, ['investigator@example.invalid']);
 });

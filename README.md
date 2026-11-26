@@ -27,7 +27,7 @@ For VPN-connected testing, use `npm run test:mail:vpn -- --check-only` to check 
 
 Recipient selection happens at the final mail boundary. Test/capture modes overwrite the SMTP envelope as well as headers, accept no alternative test recipient, and never CC/BCC production recipients. Production reports BCC `WEBMASTER_EMAIL` by default (`REPORT_BCC_WEBMASTER=true`), as requested by George. The confirmed investigators are `nick.talbot@tsl.ac.uk` and `debbie.feather@tsl.ac.uk`; configure both explicitly. Subjects outside production begin `[TEST]`.
 
-The legacy `WEBMASTER_TESTING`, `WEBMASTER`, `EMAIL_RECIPIENTS`, LDAP, JWT and `API_URL` configuration is no longer used. Missing `MAIL_MODE` always means capture, even when legacy production settings are present. Production requires a HTTPS `PUBLIC_ORIGIN`, explicit `MONGODB_URI`, an absolute `DATA_DIR` outside the application directory, full recipient addresses, and ClamAV scanning. SMTP STARTTLS is required by default; do not disable it without confirming the NBI relay's requirements.
+The legacy `WEBMASTER_TESTING`, `WEBMASTER`, `EMAIL_RECIPIENTS`, LDAP, JWT and `API_URL` configuration is no longer used. Missing `MAIL_MODE` always means capture, even when legacy production settings are present. Production requires a HTTPS `PUBLIC_ORIGIN`, explicit `MONGODB_URI`, an absolute `DATA_DIR` outside the application directory, and full recipient addresses. Antivirus defaults to ClamAV outside capture mode, but an explicit `UPLOAD_SCAN_MODE=disabled` is supported in production. SMTP STARTTLS is required by default; do not disable it without confirming the NBI relay's requirements.
 
 To send one **synthetic** report with a harmless text attachment to George:
 
@@ -55,17 +55,19 @@ Rerun to refresh the static preview after new submissions. All previews/captures
 
 ## Upload policy
 
+On **2026-11-26 George explicitly chose to restore attachments with antivirus disabled**. This supersedes the earlier scanner prerequisite. The intended deployment settings are `ATTACHMENTS_ENABLED=true`, `UPLOAD_SCAN_MODE=disabled`, `MAIL_MODE=production` and `MAX_CONCURRENT_UPLOADS=1`. The deployed text-only service remains unchanged until the updated code and configuration are rolled out. Files accepted in this mode have not been antivirus-scanned by this application.
+
 - Default: **10 files**, **10 MB each**, **15 MB combined** (decimal bytes).
 - Allowed: PDF, PNG/JPEG, UTF-8 text/CSV, DOCX, XLSX and PPTX.
 - Disallowed: executables, general archives, legacy Office formats, macro-enabled files, encrypted Office containers, and Office containers containing macros/embedded objects/ActiveX. Office expansion is limited to 50 MB and 1,000 entries. Nothing is extracted by the app.
 - Validate on the server, including content signatures rather than trusting browser MIME types. Type detection is not malware detection or a guarantee that a document is safe to open.
-- Scan each submission directory once with `clamscan`, bounded to 60 seconds. Malware, encryption/scan-limit alerts, missing scanner, missing signatures and scanner failures prevent acceptance of files. Production cannot disable scanning. Use `freshclam` to keep signatures current. See the [ClamAV scanning documentation](https://docs.clamav.net/manual/Usage/Scanning.html).
-- Stream uploads to private random filenames; enforce byte/count limits while receiving; limit concurrent uploads (one by default, to bound ClamAV RAM use) and check disk headroom. Files are not downloadable through a public route.
+- With `UPLOAD_SCAN_MODE=clamav`, scan each submission directory once with `clamscan`, bounded to 60 seconds. Malware, encryption/scan-limit alerts, missing scanner, missing signatures and scanner failures prevent acceptance of files. With explicit `UPLOAD_SCAN_MODE=disabled`, antivirus checks are skipped; file-type/Office validation, limits and private storage still apply. For scanning deployments, use `freshclam` to keep signatures current. See the [ClamAV scanning documentation](https://docs.clamav.net/manual/Usage/Scanning.html).
+- Stream uploads to private random filenames; enforce byte/count limits while receiving; limit concurrent uploads (one by default, to bound resource use) and check disk headroom. Files are not downloadable through a public route.
 - Store originals unchanged. Do not automatically strip document metadata: it may be evidence. The form explains the possibility of identifying metadata and infrastructure logs.
 
 The 15 MB raw limit produces roughly 21 MB of MIME email after encoding and headers. **Confirm the relay's message limit before production**, and lower `MAX_TOTAL_BYTES` if necessary. Keep nginx's body limit slightly above the application limit for multipart fields/headers. Defaults favour manageable attachments over a new recipient login/download service.
 
-Install ClamAV and current signatures on the VM, then run this deployment check:
+For deployments using `UPLOAD_SCAN_MODE=clamav`, install ClamAV and current signatures on the VM, then run this deployment check:
 
 ```sh
 npm run test:scanner
@@ -92,13 +94,13 @@ npm run test:scanner:dev
 
 It runs the **real installed ClamAV binary**, HTTP upload handler, temporary MongoDB and mail composer. It checks clean uploads and delivered bytes, EICAR in multi-file submissions, EICAR inside an Office container, cleanup, and missing-database failures. Its temporary database contains only a known EICAR hash: **this fixture is not general malware protection**. It is created inside the test's temporary directory and deleted afterwards; it is never installed into the application's configured database or selected as a runtime fallback. This command fails clearly if ClamAV is absent. CI installs ClamAV and runs this suite without downloading the full definitions.
 
-The regular suite retains deterministic subprocess stubs for clean/infected/error exit codes. Those stubs only live in tests. Both the offline real-engine suite and the full-definition clean/EICAR check should pass before deployment; only the latter checks the configured live signature installation.
+The regular suite retains deterministic subprocess stubs for clean/infected/error exit codes. Those stubs only live in tests. For a deployment with antivirus enabled, both the offline real-engine suite and the full-definition clean/EICAR check should pass; only the latter checks the configured live signature installation. These are not attachment-release prerequisites when the owner explicitly selects disabled antivirus.
 
 ## Acceptance, retries and storage
 
 `POST /api/form/new` accepts multipart `description` plus optional `files`. `POST /api/help` accepts JSON `subject` and `message`. Both require a UUID v4 `Idempotency-Key` header. The browser creates this key without storing report content in cookies or web storage. Request origins are checked; no accounts or tracking are required.
 
-1. Validate fields and uploads; inspect and scan attachments.
+1. Validate fields and uploads; inspect attachments and run antivirus only when configured.
 2. Move approved files from `DATA_DIR/quarantine/<random-id>` to `DATA_DIR/reports/<reference>` on the same filesystem.
 3. Persist the report and pending notification in MongoDB's `submissions_v2` collection.
 4. Return HTTP **202**, `{ "status": "received", "formId": "..." }`. This means safely received and queued, **not** email delivery confirmed.
@@ -134,10 +136,10 @@ Start with [VM_PRODUCTION_CHECKS.md](VM_PRODUCTION_CHECKS.md), the AlmaLinux 9 c
 All VM commands must select the same environment as the service, for example `npm run test:scanner -- --env-file /etc/scinteg.env`. The shared launcher loads extra CA certificates before starting Node, rather than relying on a late-loaded environment setting.
 
 1. Back up the existing database, uploads, environment and service/proxy configuration. Record the old release for rollback. Do not use real reports for testing.
-2. Provision Node v24.22.3, a supported MongoDB installation (validated on 7.0.29), and ClamAV/current signatures. Check the VM's existing MongoDB version and persistent WiredTiger storage before replacing the old Mongoose client. The app requests majority, journaled writes (`w: 'majority', j: true`); confirm successful staging submissions and storage/restart behaviour on the VM. Journaling is always enabled in MongoDB 6.1+, including the tested 7.0; do not add the removed `storage.journal.enabled` setting. See [MongoDB's journaling changes](https://www.mongodb.com/docs/v7.0/release-notes/7.0/). Automated process restarts do not simulate a VM power failure or prove the durability of its disk/backups.
+2. Provision Node v24.22.3, a supported MongoDB installation (validated on 7.0.29), and, when antivirus is enabled, ClamAV/current signatures. Check the VM's existing MongoDB version and persistent WiredTiger storage before replacing the old Mongoose client. The app requests majority, journaled writes (`w: 'majority', j: true`); confirm successful staging submissions and storage/restart behaviour on the VM. Journaling is always enabled in MongoDB 6.1+, including the tested 7.0; do not add the removed `storage.journal.enabled` setting. See [MongoDB's journaling changes](https://www.mongodb.com/docs/v7.0/release-notes/7.0/). Automated process restarts do not simulate a VM power failure or prove the durability of its disk/backups.
 3. Install this release in a new directory with `npm ci --omit=dev --ignore-scripts`. Create an absolute, private data directory outside the code/web root. Update environment variable names using `.env.example`; do not copy the old configuration unchanged.
-4. Start in **test** mode with a separate staging database/data directory. Set the correct HTTPS `PUBLIC_ORIGIN`, enable ClamAV, and verify `test:scanner`, `test:delivery`, the form, queue, attachments and service restart.
-5. Confirm the relay's size/TLS limits and intended production recipients. Configure `MAIL_MODE=production`, `UPLOAD_SCAN_MODE=clamav`, `REPORT_RECIPIENTS`, `WEBMASTER_EMAIL`, a production database and its data directory. Never mix staging records with live records.
+4. Start in **test** mode with a separate staging database/data directory. Set the correct HTTPS `PUBLIC_ORIGIN` and intended scan mode, then verify `test:delivery`, the form, queue, attachments and service restart. Run `test:scanner` when antivirus is enabled.
+5. Confirm the relay's size/TLS limits and intended production recipients. Configure `MAIL_MODE=production`, the intended `UPLOAD_SCAN_MODE`, `REPORT_RECIPIENTS`, `WEBMASTER_EMAIL`, a production database and its data directory. Never mix staging records with live records.
 6. Apply either the systemd or PM2 app configuration and the nginx examples in `deploy/`, adjusting paths, architecture and HTTPS configuration. Keep the app and MongoDB on loopback; retain the NBI firewall restriction. The nginx examples log only 5xx status/timing metadata in the custom access log, without client IPs or raw URLs; normal nginx error logs need separate access/retention controls.
 7. After restart, check readiness, queue state and disk space. Reopening an existing browser removes obsolete service-worker caches; `sw.js` is a retirement worker. On rollback, preserve `submissions_v2` and new files and inspect pending notifications: the old app will not process this new queue.
 
@@ -159,4 +161,4 @@ Install `mongod` locally or set `MONGOD_BINARY`. Each integration/browser test s
 
 The suite covers multipart uploads and validation; MIME spoofing, macros and excessive Office expansion; limits and disconnect cleanup; disk/database/scanner failures; idempotency/concurrent submissions; queue retries; escaped mail and exact SMTP recipient envelopes; HTTP headers; report/help browser flows; file removal/reselection; duplicate-click protection; network retries; and mobile layouts. Browser checks run in Chromium at desktop and mobile viewport sizes, not every browser engine.
 
-GitHub Actions pins Node, verifies a pinned MongoDB binary checksum, runs backend/browser tests plus offline real-ClamAV integration tests, and audits runtime dependencies. CI has no real SMTP credentials. Current production ClamAV signatures, NBI networking, the production proxy, backups and inbox receipt still require the VM checks above.
+GitHub Actions pins Node, verifies a pinned MongoDB binary checksum, runs backend/browser tests plus offline real-ClamAV integration tests, and audits runtime dependencies. CI has no real SMTP credentials. ClamAV signatures when scanning is enabled, NBI networking, the production proxy, backups and inbox receipt still require the VM checks above.

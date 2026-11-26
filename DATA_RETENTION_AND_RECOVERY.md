@@ -47,7 +47,7 @@ Privately verify collection counts, references and attachment hashes against the
 
 ## George's notification recovery procedure
 
-Production reports go to **nick.talbot@tsl.ac.uk** and **debbie.feather@tsl.ac.uk**, with **deeks@nbi.ac.uk** BCC. Help requests and operational alerts go only to George. Files are ordinary email attachments, with no new recipient password or download portal. Password-protected source files cannot be scanned and must be unlocked by the reporter before submission.
+Production reports go to **nick.talbot@tsl.ac.uk** and **debbie.feather@tsl.ac.uk**, with **deeks@nbi.ac.uk** BCC. Help requests and operational alerts go only to George. Files are ordinary email attachments, with no new recipient password or download portal. George authorised `UPLOAD_SCAN_MODE=disabled` on 2026-11-26 to restore uploads: antivirus is skipped in that mode, while type/size/Office validation remains. Encrypted Office containers are still rejected. If ClamAV is enabled, password-protected source files must be unlocked before scanning.
 
 The worker retries ordinary mail failures up to 60 attempts with a one-hour backoff cap (approximately 53 hours total). It retries a failed *database completion write* without sending the email again. After a process crash, a sending lease older than five minutes becomes `DELIVERY_UNCERTAIN` and requires manual review. Partial recipient delivery also requires manual review. SMTP itself can still produce ambiguity when the relay accepts a message but the connection fails before acknowledgment; exactly-once email cannot be guaranteed.
 

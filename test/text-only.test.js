@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { writeFile, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import request from 'supertest';
 import { temporaryMongo } from './helpers.js';
 import { loadConfig } from '../server/config.js';
@@ -10,12 +11,13 @@ import { connectDatabase } from '../server/database.js';
 import { createApp } from '../server/app.js';
 import { createWorker } from '../server/worker.js';
 
-test('attachment flag defaults on, is strict, and never relaxes production scanning', () => {
+test('attachment flag defaults on, is strict, and does not implicitly disable production scanning', () => {
   assert.equal(loadConfig({}).attachmentsEnabled, true);
   assert.equal(loadConfig({ ATTACHMENTS_ENABLED: 'false' }).attachmentsEnabled, false);
   for (const value of ['', '0', 'FALSE', 'typo']) assert.throws(() => loadConfig({ ATTACHMENTS_ENABLED: value }), /ATTACHMENTS_ENABLED/);
   assert.throws(() => loadConfig({ MAX_FILES: '0' }), /MAX_FILES/);
-  for (const flag of ['true', 'false']) assert.throws(() => loadConfig({ ATTACHMENTS_ENABLED: flag, MAIL_MODE: 'production', MONGODB_URI: 'mongodb://localhost/synthetic', PUBLIC_ORIGIN: 'https://synthetic.invalid', UPLOAD_SCAN_MODE: 'disabled' }), /clamav/);
+  const production = { MAIL_MODE: 'production', MONGODB_URI: 'mongodb://localhost/synthetic', PUBLIC_ORIGIN: 'https://synthetic.invalid', REPORT_RECIPIENTS: 'investigator@example.invalid', SMTP_HOST: 'synthetic.invalid', DATA_DIR: path.join(os.tmpdir(), 'scinteg-flag-config') };
+  for (const flag of ['true', 'false']) assert.equal(loadConfig({ ...production, ATTACHMENTS_ENABLED: flag }).scanMode, 'clamav');
 });
 
 test('production text-only reports stay durable, reject all uploads and never start the scanner', async t => {

@@ -6,6 +6,12 @@ Audit this checkout and the existing VM configuration against this checklist. Re
 
 Read `DATA_RETENTION_AND_RECOVERY.md` and `OPERATIONS.md` too. If checking the old Nuxt app before deploying this release, missing new commands/endpoints are NOT RUN, not proof that the old app is broken.
 
+## Owner decision: restore attachments without antivirus
+
+On **2026-11-26 George explicitly approved disabling antivirus checks to restore file uploads**. This supersedes the prior requirement to resolve ClamAV package, signature and memory issues before enabling attachments. Deploy the supporting code with `ATTACHMENTS_ENABLED=true`, `UPLOAD_SCAN_MODE=disabled`, `MAIL_MODE=production` and `MAX_CONCURRENT_UPLOADS=1`. Keep all file-type/size/count checks, private storage, HTTPS/SMTP verification and recipient routing. Test the full upload-to-email path in isolated staging, with any external synthetic mail sent only to George. Do not report antivirus checks as passed in disabled mode.
+
+The existing cutover helper may assert text-only settings; update its verification expectations intentionally. Use the current dedicated PM2 deployment, not the initial `stop-legacy`/`start` cutover actions. This checklist does not itself change the running text-only service.
+
 ## 1. Identify the installation and runtime
 
 Run as the account that owns the existing application/PM2 daemon. Discover the actual app directory, service, port, environment file, MongoDB database and old upload directory. Do not guess `/opt/scinteg/app` or `/etc/scinteg.env`; these are example deployment paths. Do not run `sudo pm2`, `pm2 env`, `printenv` or display `.env`.
@@ -21,6 +27,7 @@ node --version
 mongod --version
 mongodump --version
 mongorestore --version
+# Only when UPLOAD_SCAN_MODE=clamav:
 clamscan --version
 free -h
 df -h
@@ -50,7 +57,8 @@ Expected production values:
 | `PUBLIC_ORIGIN` | Exact HTTPS origin people use, including nonstandard port if any |
 | `MONGODB_URI` | Explicit correct production database; verify privately, never print it |
 | `DATA_DIR` | Absolute canonical private path outside all app/release/web directories; e.g. `/var/lib/scinteg/data` |
-| `UPLOAD_SCAN_MODE` | `clamav`; real current signatures; `CLAMSCAN_COMMAND` points to `clamscan`, not `clamdscan` |
+| `ATTACHMENTS_ENABLED` | `true` for the attachment rollout |
+| `UPLOAD_SCAN_MODE` | `disabled`, as explicitly selected by George; no antivirus process is required |
 | `MAX_CONCURRENT_UPLOADS` | Start at `1`; measure VM memory before raising |
 | File limits | 10 files, 10,000,000 bytes each, 15,000,000 total |
 | `MAX_MAIL_ATTEMPTS` | `60` |
@@ -69,7 +77,7 @@ Check the service user owns the private data tree and cannot write into the publ
 npm run test:mail:vpn -- --env-file /etc/scinteg.env --check-only
 # One synthetic attachment email; code forces George as the only recipient.
 npm run test:delivery -- --env-file /etc/scinteg.env
-# Clean file + harmless EICAR, in a private temporary directory.
+# Only when UPLOAD_SCAN_MODE=clamav: clean file + harmless EICAR.
 npm run test:scanner -- --env-file /etc/scinteg.env
 ```
 
@@ -77,17 +85,18 @@ George must confirm inbox receipt and attachment readability; SMTP acceptance al
 
 Confirm the relay accepts at least the encoded size of the configured maximum: 15 MB raw attachments is approximately 21 MB of email. The default synthetic delivery is small and does **not** prove this limit. Get the relay limit from NBI or perform a separately prepared synthetic boundary-size test to George only; lower the application limits if needed.
 
-Measure one real full-signature scan's peak RSS and duration (`/usr/bin/time -v` around the scanner check if available). A Mac measurement was approximately 1.5 GB per `clamscan`; use the actual VM measurement. Allow headroom for MongoDB, Node, nginx and the OS. Check `freshclam` updating successfully and signature age. EICAR success alone does not prove freshness. Keep one upload slot unless measurements justify more; a busy slot returns a retriable message.
+If enabling antivirus later, measure one real full-signature scan's peak RSS and duration (`/usr/bin/time -v` around the scanner check if available). A Mac measurement was approximately 1.5 GB per `clamscan`; use the actual VM measurement. Allow headroom for MongoDB, Node, nginx and the OS. Check `freshclam` updating successfully and signature age. EICAR success alone does not prove freshness. Keep one upload slot unless measurements justify more; a busy slot returns a retriable message.
 
 ## 4. Staging and proxy checks
 
-Use a **separate** database, data directory, port and environment file for staging. Set `MAIL_MODE=test` and production-equivalent ClamAV/TLS settings. If dependencies/dev tools are available in the staging checkout:
+Use a **separate** database, data directory, port and environment file for staging. Set `MAIL_MODE=test` and production-equivalent scan-mode/TLS settings. If dependencies/dev tools are available in the staging checkout:
 
 ```sh
 node --version
 npm ci --ignore-scripts
 npm run build
 npm test
+# Optional real-engine suite when ClamAV is installed; not a disabled-mode release gate:
 npm run test:scanner:dev
 npm run test:backup
 npm run test:e2e
@@ -95,7 +104,7 @@ npm run test:e2e
 
 These suites use synthetic records and isolated databases/local mail sinks. `test:backup` additionally requires MongoDB Database Tools; browser tests require Playwright Chromium. Don't install dev dependencies over the live release during an audit. Record missing tools as NOT RUN, not PASS.
 
-In staging, test a text report, each supported file family, multiple files, retry after a deliberate mail outage, restart recovery, help form and an intentional scanner rejection. Inspect the email to George and verify original attachment bytes. Exercise alert generation using **synthetic staging** failures. Never submit a fake report to the production form.
+In staging, test a text report, each supported file family, multiple files, retry after a deliberate mail outage, restart recovery, help form, and unsupported/oversized file rejection. For disabled antivirus, verify files are accepted without invoking a scanner; test malware rejection only when antivirus is enabled. Inspect the email to George and verify original attachment bytes. Exercise alert generation using **synthetic staging** failures. Never submit a fake report to the production form.
 
 After an authorized start of this release, check locally and through the actual HTTPS hostname:
 
@@ -134,8 +143,8 @@ Follow `DATA_RETENTION_AND_RECOVERY.md`. Before cutover, verify a private backup
 
 Identify the ongoing backup job, protected off-VM destination, last successful backup, restore evidence and owner. A script existing in Git is not an active backup policy. The supplied backup command requires all writers stopped throughout; schedule a short maintenance window or use an institutionally managed coordinated snapshot procedure. Never silently take an inconsistent live copy.
 
-After cutover, run config/health/queue checks again, confirm only one production app instance, monitor timer enabled, scanner updates scheduled, and logs/backups have owners. Keep `submissions_v2` and new evidence even if rolling back: the old app won't process the new queue.
+After cutover, run config/health/queue checks again, confirm only one production app instance, monitoring status recorded, scanner updates scheduled if antivirus is enabled, and logs/backups have owners. Keep `submissions_v2` and new evidence even if rolling back: the old app won't process the new queue.
 
 ## Report format / release decision
 
-Return: exact revision and Node version; PASS/FAIL/NOT RUN per section; any blocker with evidence and a concrete fix; confirmed investigator/BCC routing; inbox confirmation outstanding or complete; scanner peak memory/signature age; monitoring activation; backup/restore status; and **GO / GO FOR STAGING ONLY / NO-GO**. Separate environmental gaps from code defects. Don't call production green while TLS/delivery, scanner capacity, persistent storage/backup or independent monitoring remain unverified.
+Return: exact revision and Node version; PASS/FAIL/NOT RUN per section; any blocker with evidence and a concrete fix; confirmed investigator/BCC routing; inbox confirmation outstanding or complete; scan mode (and peak memory/signature age only if antivirus is enabled); monitoring activation; backup/restore status; and **GO / GO FOR STAGING ONLY / NO-GO**. Separate environmental gaps from code defects. Do not call required TLS/delivery and durable-storage checks passed without evidence. Record agreed operational deferrals explicitly. Scanner capacity is a prerequisite only if antivirus is enabled.
