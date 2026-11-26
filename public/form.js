@@ -27,6 +27,7 @@ function invalidFile(file) {
   return '';
 }
 function validSelection() {
+  if (isReport && limits.attachmentsEnabled === false) return files.length === 0;
   return !isReport || (files.length <= limits.maxFiles && files.reduce((n, file) => n + file.size, 0) <= limits.maxTotalBytes && files.every(file => !invalidFile(file)));
 }
 function updateButton() { submit.disabled = sending || !limits || !validSelection(); }
@@ -52,6 +53,10 @@ function renderFiles() {
   updateButton();
 }
 fileInput?.addEventListener('change', () => {
+  if (limits?.attachmentsEnabled === false) {
+    fileInput.value = '';
+    return showError('Attachments are temporarily unavailable. Please include the details in your description.');
+  }
   files.push(...fileInput.files);
   fileInput.value = '';
   renderFiles();
@@ -70,11 +75,11 @@ function send(body) {
     xhr.open('POST', isReport ? '/api/form/new' : '/api/help');
     xhr.timeout = 180_000;
     xhr.setRequestHeader('Idempotency-Key', submissionKey);
-    if (!isReport) xhr.setRequestHeader('Content-Type', 'application/json');
+    if (!isReport || limits.attachmentsEnabled === false) xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.upload.onprogress = event => {
       if (progress && event.lengthComputable) {
         progress.value = Math.round(event.loaded / event.total * 100);
-        statusLabel.textContent = progress.value === 100 ? 'Files uploaded. Checking and storing your report…' : `Uploading: ${progress.value}%`;
+        statusLabel.textContent = progress.value === 100 ? 'Submission uploaded. Checking and storing your report…' : `Uploading: ${progress.value}%`;
       }
     };
     const uncertain = () => reject(new Error('The connection was interrupted, so receipt could not be confirmed. Keep this page open and retry with the same contents; a retry will not create a second report.'));
@@ -98,7 +103,9 @@ form.addEventListener('submit', async event => {
   const contents = JSON.stringify({ text, subject, files: files.map(f => [f.name, f.size, f.lastModified]) });
   if (!submissionKey || contents !== previousContents) { submissionKey = uuid(); previousContents = contents; }
   let body;
-  if (isReport) {
+  if (isReport && limits.attachmentsEnabled === false) {
+    body = JSON.stringify({ description: text });
+  } else if (isReport) {
     body = new FormData(); body.append('description', text);
     files.forEach(file => body.append('files', file));
   } else body = JSON.stringify({ subject, message: text });
@@ -120,6 +127,7 @@ form.addEventListener('submit', async event => {
     sending = false;
     window.removeEventListener('beforeunload', beforeUnload);
     Array.from(form.elements).forEach(element => { element.disabled = false; });
+    if (fileInput) fileInput.disabled = limits.attachmentsEnabled === false;
     statusLabel.textContent = '';
     if (progress) progress.hidden = true;
     updateButton();
@@ -132,7 +140,10 @@ fetch('/api/config', { cache: 'no-store' }).then(async response => {
   document.querySelector('#testing').hidden = !limits.testing;
   if (isReport) {
     fileInput.accept = limits.allowedExtensions.join(',');
-    fileInput.disabled = false;
+    fileInput.disabled = limits.attachmentsEnabled === false;
+    document.querySelector('#attachment-fields').hidden = limits.attachmentsEnabled === false;
+    document.querySelector('#attachments-unavailable').hidden = limits.attachmentsEnabled !== false;
+    if (limits.attachmentsEnabled === false) document.querySelector('#description-hint').textContent = 'Please include all relevant details in your description. Maximum 20,000 characters.';
     document.querySelector('#limits').textContent = `Up to ${limits.maxFiles} files; ${mb(limits.maxFileBytes)} per file and ${mb(limits.maxTotalBytes)} combined.`;
   }
   updateButton();

@@ -46,7 +46,7 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
     } catch { /* reported as unavailable */ }
     res.status(status === 'ok' ? 200 : 503).json({ status });
   });
-  app.get('/api/config', (req, res) => res.json({ maxFiles: config.maxFiles, maxFileBytes: config.maxFileBytes, maxTotalBytes: config.maxTotalBytes, allowedExtensions: Object.keys(allowedTypes), testing: config.mailMode !== 'production' }));
+  app.get('/api/config', (req, res) => res.json({ attachmentsEnabled: config.attachmentsEnabled !== false, maxFiles: config.maxFiles, maxFileBytes: config.maxFileBytes, maxTotalBytes: config.maxTotalBytes, allowedExtensions: Object.keys(allowedTypes), testing: config.mailMode !== 'production' }));
 
   let requests = 0;
   let windowStart = Date.now();
@@ -111,7 +111,16 @@ export async function createApp({ config, db, scanner, diskStats = statfs, logge
   }
 
   const upload = uploadMiddleware(config);
-  app.post('/api/form/new', async (req, res) => {
+  const textOnly = config.attachmentsEnabled === false;
+  const reportBody = textOnly ? express.json({ limit: '100kb', strict: true, inflate: false }) : (req, res, next) => next();
+  app.post('/api/form/new', reportBody, async (req, res) => {
+    if (textOnly) {
+      // Reject the entire multipart request before parsing or storing any file.
+      if (!req.is('application/json')) throw new HttpError(415, 'Attachments are temporarily unavailable. Reload the form to submit a text-only report.');
+      if (!req.body || Object.keys(req.body).some(key => key !== 'description')) throw new HttpError(400, 'Only a report description is accepted while attachments are unavailable.');
+      const record = await accept('report', req, { description: description(req.body.description), files: [] });
+      return res.status(202).json(receipt(record));
+    }
     if (!req.is('multipart/form-data')) throw new HttpError(415, 'Use the report form to submit files.');
     if (Number(req.headers['content-length']) > config.maxTotalBytes + 100_000) throw new HttpError(413, 'This submission exceeds the upload limit.');
     if (active >= config.maxConcurrentUploads) throw new HttpError(503, 'Uploads are busy. Please try again shortly.');

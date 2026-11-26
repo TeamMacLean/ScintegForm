@@ -30,6 +30,8 @@ export function canonicalPath(value) {
 }
 
 export function loadConfig(env = process.env) {
+  const attachments = env.ATTACHMENTS_ENABLED ?? 'true';
+  if (!['true', 'false'].includes(attachments)) throw new Error('ATTACHMENTS_ENABLED must be true or false');
   const mailMode = env.MAIL_MODE || 'capture';
   if (!['capture', 'test', 'production'].includes(mailMode)) throw new Error('Invalid MAIL_MODE');
   if (env.TEST_EMAIL && env.TEST_EMAIL !== TEST_EMAIL) throw new Error(`TEST_EMAIL must be ${TEST_EMAIL}`);
@@ -64,7 +66,7 @@ export function loadConfig(env = process.env) {
   const maxTotalBytes = integer(env, 'MAX_TOTAL_BYTES', 15_000_000, 1, 100_000_000);
   const maxFileBytes = integer(env, 'MAX_FILE_BYTES', Math.min(10_000_000, maxTotalBytes), 1, maxTotalBytes);
   return Object.freeze({
-    mailMode, recipients, webmaster, origin, port,
+    mailMode, recipients, webmaster, origin, port, attachmentsEnabled: attachments === 'true',
     reportBccWebmaster: env.REPORT_BCC_WEBMASTER !== 'false',
     notificationOverdueMs: integer(env, 'NOTIFICATION_OVERDUE_MINUTES', 240, 1, 10080) * 60_000,
     alertRepeatMs: integer(env, 'ALERT_REPEAT_MINUTES', 240, 1, 10080) * 60_000,

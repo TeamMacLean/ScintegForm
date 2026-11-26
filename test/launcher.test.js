@@ -20,3 +20,19 @@ test('maintenance launcher loads the explicit environment and CA before Node sta
   assert.deepEqual(config.recipients, ['deeks@nbi.ac.uk']);
   assert.notEqual(run(path.join(dir, 'missing.env')).status, 0);
 });
+
+test('launcher exits with its task even when a supervisor has active handles', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'scinteg-launcher-supervisor-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const envFile = path.join(dir, 'service.env');
+  await writeFile(envFile, `MAIL_MODE=capture\nDATA_DIR=${dir}/evidence\n`);
+  const run = () => spawnSync(process.execPath, [
+    '--import', 'data:text/javascript,setInterval(() => {}, 1000)',
+    'scripts/run.js', 'config:check', '--env-file', envFile,
+  ], { env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 3000, killSignal: 'SIGKILL' });
+  const success = run();
+  assert.equal(success.status, 0, success.error?.message || success.stderr);
+  await writeFile(envFile, 'MAIL_MODE=invalid\n');
+  const failure = run();
+  assert.equal(failure.status, 1, failure.error?.message || failure.stderr);
+});

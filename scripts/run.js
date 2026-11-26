@@ -25,5 +25,6 @@ try {
   child.on('message', message => { if (message === 'ready') process.send?.('ready'); });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
   child.on('error', () => { console.error('Could not start Scinteg command'); process.exitCode = 1; });
-  child.on('exit', (code, signal) => { process.exitCode = code ?? (signal === 'SIGINT' ? 130 : 1); });
+  // A supervisor can keep handles alive after the child and its stdio close.
+  child.on('close', (code, signal) => process.exit(code ?? (signal === 'SIGINT' ? 130 : 1)));
 } catch (error) { console.error(error.message); process.exitCode = 1; }

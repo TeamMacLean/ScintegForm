@@ -26,7 +26,8 @@
       <label for="description">Description of the incident <span>(required)</span></label>
       <p id="description-hint" class="hint">Please provide an overview, even if the full details are in an attachment. Maximum 20,000 characters.</p>
       <textarea id="description" name="description" required maxlength="20000" rows="9" aria-describedby="description-hint"></textarea>
-      <fieldset><legend>Supporting files <span>(optional)</span></legend>
+      <p id="attachments-unavailable" class="notice" role="status" hidden>Attachments are temporarily unavailable. Please include all relevant details in your description.</p>
+      <fieldset id="attachment-fields"><legend>Supporting files <span>(optional)</span></legend>
         <p id="limits" class="hint">Loading upload limits…</p>
         <p class="hint">PDF, PNG/JPEG images, UTF-8 text/CSV, and modern Word, Excel or PowerPoint documents. Archives, executable files, and macro-enabled Office documents are not accepted.</p>
         <label class="file-label" for="files">Choose supporting files</label>

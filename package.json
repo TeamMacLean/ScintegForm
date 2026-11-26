@@ -22,7 +22,8 @@
     "notifications": "node scripts/run.js notifications",
     "monitor": "node scripts/run.js monitor",
     "config:check": "node scripts/run.js config:check",
-    "backup": "node scripts/run.js backup"
+    "backup": "node scripts/run.js backup",
+    "test:e2e:text-only": "ATTACHMENTS_ENABLED=false node node_modules/playwright/cli.js test e2e/text-only.spec.js"
   },
   "dependencies": {
     "express": "5.3.0",

@@ -6,7 +6,7 @@ import { createApp } from '../server/app.js';
 import { createWorker } from '../server/worker.js';
 import { createMailer } from '../server/mail.js';
 const mongo = await temporaryMongo();
-const config = loadConfig({ DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, PUBLIC_ORIGIN: 'http://127.0.0.1:4317', MIN_FREE_BYTES: '0', MAX_REQUESTS_PER_MINUTE: '1000' });
+const config = loadConfig({ ATTACHMENTS_ENABLED: process.env.ATTACHMENTS_ENABLED, DATA_DIR: path.join(mongo.dir, 'data'), MONGODB_URI: mongo.uri, PUBLIC_ORIGIN: 'http://127.0.0.1:4317', MIN_FREE_BYTES: '0', MAX_REQUESTS_PER_MINUTE: '1000' });
 const db = await connectDatabase(config);
 const app = await createApp({ config, db });
 const mailer = createMailer(config);
